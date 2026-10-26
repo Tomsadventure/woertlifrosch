@@ -505,10 +505,10 @@ function renderPack() {
   if (!PK) { packRoot.innerHTML = ''; return; }
   const stage = !PK.torn
     ? `<button class="pack-stage" data-act="pack-tear" aria-label="Päckchen aufreissen">${pochetteHTML(PK.kind, 'big')}</button><p class="pack-hint">Tippe aufs Päckchen, um es aufzureissen!</p>`
-    : `<div class="pk-cards n${Math.min(PK.got.length, 4)}">${PK.got.map((g, i) => {
+    : `<div class="pk-cards n${Math.min(PK.got.length, 4)} ${PK.got.some(g => STICKER[g.id].format === 'quer') ? 'has-quer' : ''}">${PK.got.map((g, i) => {
         const s = STICKER[g.id], open = PK.shown.has(i);
         return `<button class="pk-card ${s.art} ${s.format} ${open ? 'flipped' : ''}" data-act="pack-flip" data-i="${i}" style="--i:${i}" aria-label="${open ? esc(s.titel) : 'Sticker umdrehen'}">
-          <span class="pk-in"><span class="pk-back"><img src="icons/favicon.png" alt=""></span>
+          <span class="pk-in"><span class="pk-back"><img src="icons/icon-192.png" alt=""></span>
           <span class="pk-front">${cardHTML(g.id)}<span class="pk-tags">${g.neu ? '<em class="t-neu">Neu</em>' : '<em class="t-dup">Doppelt</em>'}${s.art === 'gold' ? '<em class="t-gold">★★ Gold</em>' : s.art === 'glitzer' ? '<em class="t-glitzer">★ Glitzer</em>' : ''}</span></span></span>
           <span class="pk-name" lang="fr">${esc(s.titel)}</span></button>`;
       }).join('')}</div>`;
@@ -590,7 +590,7 @@ function homeHTML() {
   const hasPlus = u.lists.some(l => l.aktiv && isPlus(l)) && u.lists.some(l => l.aktiv && !isPlus(l));
   return `<div class="screen home">
     <header class="bar">
-      <button class="brand" data-act="hello" aria-label="Wörtli-Frosch – Léo sagt Hallo"><img src="icons/favicon.png" alt=""><span>Wörtli-Frosch</span></button>
+      <button class="brand" data-act="hello" aria-label="Wörtli-Frosch – Léo sagt Hallo"><img src="icons/icon-192.png" alt=""><span>Wörtli-Frosch</span></button>
       <div class="bar-right">
         <button class="pill ${S.neu.length || ACTIVE.some(x => isPanini(x.n) && packsPending(x.n) > 0) ? 'has-new' : ''}" data-act="album" aria-label="Stickeralbum: ${S.stickers.length} von ${D.stickers.length} Stickern">${ICON.sticker}<span class="pill-t">Album</span><b>${S.stickers.length}/${D.stickers.length}</b></button>
         <button class="icon-btn" data-act="settings" aria-label="Einstellungen">${ICON.gear}</button>
@@ -1074,7 +1074,7 @@ function memoryHTML() {
       <span class="count" id="moves">${Q.moves} Züge</span></header>
     <p class="mem-hint">Finde zu jedem Bild das französische Wort.</p>
     <section class="mem-grid">${Q.deck.map((c, i) => `<button class="mcard ${Q.found.has(c.id) ? 'found open' : Q.open.includes(i) ? 'open' : ''}" data-act="flip" data-i="${i}" aria-label="Karte ${i + 1}">
-      <span class="mback"><img src="icons/favicon.png" alt=""></span>
+      <span class="mback"><img src="icons/icon-192.png" alt=""></span>
       <span class="mfront">${c.side === 'bild' ? `<img src="${img(c.id)}" alt="">` : `<b lang="fr">${show(WORD[c.id].fr)}</b>`}</span></button>`).join('')}</section>
   </div>`;
 }

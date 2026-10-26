@@ -44,7 +44,7 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; touch-action: manipulation; }   /* kein Doppeltipp-Zoom, Auseinanderziehen geht weiter */
 body {
   margin: 0; min-height: 100vh; min-height: 100dvh;
   font-family: 'Nunito', ui-rounded, 'Segoe UI', system-ui, sans-serif; color: var(--ink);
@@ -440,10 +440,11 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
 .res-pack { text-align: center; }
 
 /* Päckchen öffnen (Overlay) */
-#pack-root { position: fixed; inset: 0; z-index: 40; display: none; }
+/* touch-action: kein Zoom bei schnellem Doppeltippen (Kinder tippen aufs Päckchen und gleich weiter) */
+#pack-root { position: fixed; inset: 0; z-index: 40; display: none; touch-action: manipulation; }
 #pack-root.open { display: block; }
 .pack-bg { position: absolute; inset: 0; background: radial-gradient(circle at 50% 38%, #2E783C, #0B2414 75%); }
-.pack-box { position: relative; height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; color: #fff; text-align: center;
+.pack-box { position: relative; height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; color: #fff; text-align: center; touch-action: manipulation;
   padding: max(16px, env(safe-area-inset-top)) var(--gut) max(24px, env(safe-area-inset-bottom)); }
 .pack-x { position: absolute; top: max(12px, env(safe-area-inset-top)); right: var(--gut); background: rgba(255, 255, 255, .16); color: #fff; box-shadow: none; }
 .pack-h { margin: 22px 50px 12px; font-size: clamp(24px, 5vw, 34px); font-weight: 800; }
@@ -454,6 +455,10 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
 .pk-cards { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 16px; margin: 6px 0 4px; perspective: 1200px; }
 .pk-card { position: relative; width: clamp(96px, 27vw, 180px); padding: 0; color: #fff; animation: cardOut .6s cubic-bezier(.3, 1.4, .5, 1) calc(var(--i) * .15s) both; }
 .pk-card.quer { width: clamp(160px, 46vw, 270px); }
+/* mit einem quer liegenden Sticker (Mannschaftsfoto, Stadion) alle drei etwas kleiner, damit sie in eine Reihe passen */
+.pk-cards.n3.has-quer { gap: 20px 10px; align-items: center; }
+.pk-cards.n3.has-quer .pk-card { width: clamp(80px, 22vw, 150px); }
+.pk-cards.n3.has-quer .pk-card.quer { width: clamp(130px, 38vw, 250px); }
 .pk-cards.n4 .pk-card { width: clamp(84px, 21vw, 150px); }
 .pk-cards.n4 .pk-card.quer { width: clamp(140px, 40vw, 230px); }
 /* Umdrehen wie beim Memory: jede Seite dreht sich selbst (Safari kennt backface-visibility nur so zuverlässig) */
@@ -467,7 +472,8 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
   background: var(--pad-pattern) 0 0 / 90px 90px, linear-gradient(160deg, #3FBACB, var(--pond) 50%, #2F9A55); transform: rotateY(0deg); }
 .pk-card.flipped .pk-front { transform: rotateY(0deg); }
 .pk-card.flipped .pk-back { transform: rotateY(180deg); }
-.pk-back img { width: 46%; border-radius: 12px; }
+.pk-back img { width: 56%; border-radius: 14px; box-shadow: 0 3px 8px rgba(0, 0, 0, .25); }
+.pk-card.quer .pk-back img { width: 34%; }
 .pk-card:not(.flipped) .pk-back { animation: cardWiggle 2.2s ease-in-out calc(1s + var(--i) * .3s) infinite; }
 .pk-tags { position: absolute; top: -10px; left: 0; right: 0; z-index: 2; display: flex; justify-content: center; gap: 4px; }
 .pk-tags em { font-style: normal; font-weight: 800; font-size: 12px; padding: 1px 6px; border-radius: 8px; color: var(--ink); background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .3); white-space: nowrap; }
