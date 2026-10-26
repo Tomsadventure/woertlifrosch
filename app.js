@@ -346,9 +346,22 @@ const isPanini = n => !!UNIT[n] && UNIT[n].album === 'panini';
 const allSafe = ws => ws.length > 0 && sicher(ws) === ws.length;
 const NUM = {};                                                     // Nummer im Album wie bei Panini (je Seite 1 …)
 ACTIVE.forEach(u => unitStickers(u.n).forEach((s, i) => { NUM[s.id] = i + 1; }));
-/* Päckchen einer Unité: pts = aus Lernpunkten verdient, bonus = Bedingungen schon erfüllt,
-   special = Pochette spéciale (0 nein, 1 verdient, 2 geöffnet), opened = geöffnete Päckchen */
-const pk = n => (S.pk[n] = Object.assign({ pts: 0, bonus: [], special: 0, opened: 0 }, S.pk[n]));
+/* Päckchen einer Unité: pts = aus Päckchen-Punkten verdiente Päckchen, ans = Punkte für richtige Antworten, lp = höchster
+   Stand der Lernpunkte, bonus = Bedingungen schon erfüllt, special = Pochette spéciale (0 nein, 1 verdient, 2 geöffnet),
+   opened = geöffnete Päckchen. v 2 (2026-10-26): Päckchen-Punkte statt Lernpunkte – beim Übergang beginnt ans so, dass das
+   nächste Päckchen nach PER_PACK weiteren Punkten kommt (nichts geht verloren, nichts gibt es doppelt). */
+const PK_START = { pts: 0, special: 0, opened: 0, ans: 0, lp: 0 };
+const pk = n => {
+  const p = S.pk[n] || (S.pk[n] = {});                  // immer dasselbe Objekt (nicht kopieren: sonst gehen Änderungen verloren)
+  Object.keys(PK_START).forEach(k => { if (typeof p[k] !== 'number') p[k] = PK_START[k]; });
+  if (!Array.isArray(p.bonus)) p.bonus = [];
+  if (p.v !== 2) { p.lp = unitPoints(n); p.ans = Math.max(0, p.pts * L.PER_PACK - p.lp); p.v = 2; }
+  return p;
+};
+/* Päckchen-Punkte (lernen.js → Panini-Seite): richtige Antworten + höchster Stand der Lernpunkte */
+const packPoints = n => { const p = pk(n); p.lp = Math.max(p.lp, unitPoints(n)); return p.lp + p.ans; };
+/* Eine richtige Antwort (1. Versuch) zu diesem Wort: 1 Päckchen-Punkt, wenn seine Unité eine Panini-Seite hat */
+function answerPoint(id) { const n = WORD[id] && WORD[id].unit; if (isPanini(n)) pk(n).ans++; }
 const packsPending = n => { const p = pk(n); return p.pts + p.bonus.length + (p.special ? 1 : 0) - p.opened; };
 /* Welches Päckchen kommt als nächstes? Die Pochette spéciale immer zuletzt (vorher können die anderen noch Lücken füllen) */
 function nextPackKind(n) {
@@ -373,7 +386,7 @@ function checkStickers(ctx = {}) {
       res.stickers.push(...neu);
       return;
     }
-    const p = pk(n), earned = L.packsFromPoints(pts);
+    const p = pk(n), earned = L.packsFromPoints(packPoints(n));
     for (; p.pts < earned; p.pts++) res.packs.push('punkte');
     BONUS.forEach(b => { if (ctx.unit === n && ctx[b] && !p.bonus.includes(b)) { p.bonus.push(b); res.packs.push(b); } });
     u.lists.filter(l => l.aktiv).forEach(l => {
@@ -396,7 +409,7 @@ function bedingungText(b) {
   return BEDINGUNG[b] || '';
 }
 /* Wofür gab es das Päckchen? */
-const packWhy = k => (k === 'punkte' ? `${L.PER_PACK} Lernpunkte` : k === 'special' ? 'Alle Wörter sicher – Pochette spéciale!' : `Bonus: ${bedingungText(k)}`);
+const packWhy = k => (k === 'punkte' ? `${L.PER_PACK} Punkte` : k === 'special' ? 'Alle Wörter sicher – Pochette spéciale!' : `Bonus: ${bedingungText(k)}`);
 /* Nächster Sticker / nächstes Päckchen der Unité n: { text, pct, act } */
 function nextInfo(n = S.unit) {
   const plural = k => `${k} ${k === 1 ? 'Lernpunkt' : 'Lernpunkte'}`;
@@ -404,8 +417,8 @@ function nextInfo(n = S.unit) {
     const open = packsPending(n);
     if (open > 0) return { text: open === 1 ? 'Ein Päckchen zum Öffnen!' : `${open} Päckchen zum Öffnen!`, pct: 100, act: 'open-pack', icon: 'pack' };
     if (pageFull(n)) return { text: 'Album-Seite voll!', pct: 100, icon: 'pack' };
-    const left = L.toNextPack(unitPoints(n), pk(n).pts);
-    return { text: `Nächstes Päckchen: noch ${plural(left)}`, pct: Math.round(100 * (L.PER_PACK - Math.min(left, L.PER_PACK)) / L.PER_PACK), icon: 'pack' };
+    const left = L.toNextPack(packPoints(n), pk(n).pts);
+    return { text: `Nächstes Päckchen: noch ${left} ${left === 1 ? 'Punkt' : 'Punkte'}`, pct: Math.round(100 * (L.PER_PACK - Math.min(left, L.PER_PACK)) / L.PER_PACK), icon: 'pack' };
   }
   const left = L.toNextSticker(unitStickers(n), S.stickers, unitPoints(n));
   return left == null ? { text: 'Alle normalen Sticker gesammelt!', pct: 100, icon: 'sticker' }
@@ -502,7 +515,7 @@ function flipCard(i) {
 }
 function flipAll() { if (PK) PK.got.forEach((g, i) => { if (!PK.shown.has(i)) { PK.shown.add(i); } }); renderPack(); }
 function packAfterHTML() {
-  if (!PK || PK.shown.size < PK.got.length) return PK && PK.got.length > 3 ? `<button class="btn" data-act="pack-all">Alle umdrehen</button>` : '<p class="pack-hint">Tippe die Sticker an, um sie umzudrehen!</p>';
+  if (!PK || PK.shown.size < PK.got.length) return PK && PK.got.length > L.PACK_SIZE ? `<button class="btn" data-act="pack-all">Alle umdrehen</button>` : '<p class="pack-hint">Tippe die Sticker an, um sie umzudrehen!</p>';
   const neu = PK.got.filter(g => g.neu).length, dup = PK.got.length - neu, more = packsPending(PK.n);
   return `<p class="pack-sum">${neu ? `<b>${neu} neu</b>` : 'Nichts Neues'}${dup ? ` · ${dup} doppelt` : ''}${dup ? ' – Doppelte kannst du im Album tauschen.' : ''}</p>
     <div class="confirm-actions">${more ? `<button class="btn primary" data-act="open-pack" data-unit="${PK.n}">${ICON.pack}<span>Nächstes Päckchen (${more})</span></button>` : ''}
@@ -512,12 +525,12 @@ function renderPack() {
   if (!PK) { packRoot.innerHTML = ''; return; }
   const stage = !PK.torn
     ? `<button class="pack-stage" data-act="pack-tear" aria-label="Päckchen aufreissen">${pochetteHTML(PK.kind, 'big')}</button><p class="pack-hint">Tippe aufs Päckchen, um es aufzureissen!</p>`
-    : `<div class="pk-cards n${Math.min(PK.got.length, 4)} ${PK.got.some(g => STICKER[g.id].format === 'quer') ? 'has-quer' : ''}">${PK.got.map((g, i) => {
+    : `<div class="pk-cards n${PK.got.length <= L.PACK_SIZE ? L.PACK_SIZE : 'x'} ${PK.got.some(g => STICKER[g.id].format === 'quer') ? 'has-quer' : ''}">${PK.got.map((g, i) => {
         const s = STICKER[g.id], open = PK.shown.has(i);
         return `<button class="pk-card ${s.art} ${s.format} ${open ? 'flipped' : ''}" data-act="pack-flip" data-i="${i}" style="--i:${i}" aria-label="${open ? esc(s.titel) : 'Sticker umdrehen'}">
           <span class="pk-in"><span class="pk-back"><img src="icons/icon-192.png" alt=""></span>
           <span class="pk-front">${cardHTML(g.id)}<span class="pk-tags">${g.neu ? '<em class="t-neu">Neu</em>' : '<em class="t-dup">Doppelt</em>'}${s.art === 'gold' ? '<em class="t-gold">★★ Gold</em>' : s.art === 'glitzer' ? '<em class="t-glitzer">★ Glitzer</em>' : ''}</span></span></span>
-          <span class="pk-name" lang="fr">${esc(s.titel)}</span></button>`;
+          <span class="pk-name" lang="fr">${esc(s.rolle ? s.titel.split(',')[0] : s.titel)}</span></button>`;   // Spieler: nur der Name (Léo sagt den ganzen Titel)
       }).join('')}</div>`;
   packRoot.innerHTML = `<div class="pack-bg"></div><div class="pack-box" role="dialog" aria-modal="true" aria-label="Päckchen">
     <button class="icon-btn pack-x" data-act="pack-close" aria-label="Schliessen">${ICON.close}</button>
@@ -674,6 +687,7 @@ function startTasks(mode, list, pool) {
   Q = { mode, list, pool, i: 0, tries: 0, hinted: false, input: '', placed: [], streak: 0, maxStreak: 0, results: [], before: {}, locked: false, extra: 0 };
   pool.forEach(w => { Q.before[w.id] = st(w.id).box; });
   Q.ptsBefore = allPoints();
+  Q.packBefore = isPanini(S.unit) ? packPoints(S.unit) : 0;
   Sound.preload([...new Set(list.map(t => t.id))].concat(['leo_lob_01', 'leo_lob_02', 'leo_lob_03', 'leo_fast_01', 'leo_fast_02', 'leo_loesung']));
   [...new Set(list.map(t => t.id))].forEach(id => { new Image().src = img(id); });
   nav('task');
@@ -958,6 +972,7 @@ function record(t, result) {
   if (t.repeat && result !== 'wrong') result = 'second';           // Wiederholung zählt nicht doppelt
   const before = st(t.id).box;
   S.w[t.id] = L.record(st(t.id), t.kind, result, S.round, Date.now());
+  if (result === 'first' && t.kind !== 'karte') answerPoint(t.id);   // Päckchen-Punkt (nur Panini-Seiten)
   save();
   return { before, after: S.w[t.id].box };
 }
@@ -978,7 +993,8 @@ function finish() {
   const ws = Q.pool;
   const newSafe = ws.filter(w => Q.before[w.id] < L.MAX && st(w.id).box === L.MAX).map(w => w.id);
   const grew = ws.filter(w => st(w.id).box > Q.before[w.id]).map(w => w.id);
-  const res = { mode: Q.mode, firstRight, total: done.length, newSafe, grew, mistakes: [], gained: allPoints() - Q.ptsBefore };
+  const res = { mode: Q.mode, firstRight, total: done.length, newSafe, grew, mistakes: [], gained: allPoints() - Q.ptsBefore,
+    packGained: isPanini(S.unit) ? packPoints(S.unit) - Q.packBefore : 0 };
   if (Q.mode.typ === 'test') {
     res.mistakes = Q.results.filter(r => r && !r.first).map(r => ({ id: r.id, answer: r.answer || '' }));
     S.tests.push({ unit: S.unit, teil: S.teil, t: Date.now(), right: firstRight, total: done.length });
@@ -1017,7 +1033,7 @@ function resultHTML(res) {
       <button class="btn primary" data-act="drill-mistakes">${ICON.pencil}<span>Diese ${res.mistakes.length} Wörter üben</span></button></section>` : ''}
     <section class="grow">
       <div class="grow-row">${res.grew.slice(0, 12).map(id => `<span class="grow-w">${levelHTML(st(id).box)}<span lang="fr">${show(WORD[id].fr)}</span></span>`).join('')}</div>
-      <p>${res.gained > 0 ? `<b>+${res.gained} ${res.gained === 1 ? 'Lernpunkt' : 'Lernpunkte'}.</b> ` : ''}${res.newSafe.length ? `${res.newSafe.length} ${res.newSafe.length === 1 ? 'Wort sitzt' : 'Wörter sitzen'} jetzt sicher. ` : ''}${g} von ${ws.length} Wörtern sicher.</p>
+      <p>${res.gained > 0 ? `<b>+${res.gained} ${res.gained === 1 ? 'Lernpunkt' : 'Lernpunkte'}.</b> ` : ''}${res.packGained > 0 ? `<b>+${res.packGained} ${res.packGained === 1 ? 'Punkt' : 'Punkte'} fürs Album.</b> ` : ''}${res.newSafe.length ? `${res.newSafe.length} ${res.newSafe.length === 1 ? 'Wort sitzt' : 'Wörter sitzen'} jetzt sicher. ` : ''}${g} von ${ws.length} Wörtern sicher.</p>
       ${showPack ? '' : nextStkHTML('wide')}
     </section>
     <div class="res-actions">
@@ -1101,7 +1117,9 @@ function flip(i) {
   if (a.id === b.id) {
     Q.found.add(a.id); Q.open = [];
     document.querySelectorAll(`.mcard`).forEach(m => { if (Q.deck[+m.dataset.i].id === a.id) m.classList.add('found'); });
-    if (st(a.id).box === 0) { S.w[a.id] = L.record(st(a.id), 'karte', 'first', S.round, Date.now()); save(); }
+    if (st(a.id).box === 0) S.w[a.id] = L.record(st(a.id), 'karte', 'first', S.round, Date.now());
+    answerPoint(a.id);                                                // jedes Paar: 1 Päckchen-Punkt (Panini-Seiten)
+    save();
     setTimeout(() => { sfx.right(Q.found.size); if (c.side !== 'wort') sayWord(a.id); }, 250);
     if (Q.found.size === 6) {
       const got = checkStickers({ unit: S.unit, memory9: Q.moves <= 9 });
@@ -1162,7 +1180,7 @@ function paniniPageHTML(n) {
   const dups = pageDups(n), cheapest = Math.min(...page.filter(s => !have.has(s.id)).map(L.tradeCost));
   const slot = s => have.has(s.id)
     ? `<button class="pslot got ${s.format} ${neu.has(s.id) ? 'is-new' : ''}" data-act="sticker" data-id="${s.id}" aria-label="${esc(s.titel)}">${cardHTML(s.id)}${neu.has(s.id) ? '<em>Neu</em>' : ''}${S.dup[s.id] ? `<b class="pdup">×${S.dup[s.id] + 1}</b>` : ''}</button>`
-    : `<div class="pslot empty ${s.format} ${s.art}"><span class="pnum">${NUM[s.id]}</span><span class="plabel" lang="fr">${esc(s.kurz)}</span>${RAR_LABEL[s.art] ? `<span class="prar">${RAR_LABEL[s.art]}</span>` : ''}</div>`;
+    : `<div class="pslot empty ${s.format} ${s.art}"><span class="pnum">${NUM[s.id]}</span><span class="plabel" lang="fr">${esc(s.kurz)}</span>${s.rolle ? `<span class="prole" lang="fr">${esc(s.rolle)}</span>` : ''}${RAR_LABEL[s.art] ? `<span class="prar">${RAR_LABEL[s.art]}</span>` : ''}</div>`;
   const block = (title, sub, list, style, flag) => `<section class="pteam" style="${style}">
     <header class="pband">${flag}<b lang="fr">${title}</b><span>${sub}</span><i>${list.filter(s => have.has(s.id)).length}/${list.length}</i></header>
     <div class="pgrid">${list.map(slot).join('')}</div></section>`;
@@ -1170,7 +1188,7 @@ function paniniPageHTML(n) {
   return `<section class="ptop">
       <img class="ptop-leo" src="${img(got === page.length ? 'leo_jubel' : 'leo_fussball')}" alt="Léo">
       <div class="ptop-t"><h2 lang="fr">La Coupe du monde des grenouilles</h2><p class="ptop-sub">Die Frosch-WM · ${UNIT[n].titel} · ${got} von ${page.length} Stickern</p>
-      <p class="album-intro">Alle ${L.PER_PACK} Lernpunkte in ${UNIT[n].titel} gibt es ein Päckchen mit ${L.PACK_SIZE} Stickern – manche sind selten! Doppelte kannst du bei Léo gegen fehlende tauschen. Sind alle Wörter sicher, ist die Seite voll.</p>
+      <p class="album-intro">In ${UNIT[n].titel} gibt jede richtige Antwort einen Punkt – in allen Übungen –, und jeder Lernfortschritt auch. Alle ${L.PER_PACK} Punkte gibt es ein Päckchen mit ${L.PACK_SIZE} Stickern – manche sind selten! Doppelte kannst du bei Léo gegen fehlende tauschen. Sind alle Wörter sicher, ist die Seite voll.</p>
       ${nextStkHTML('static', n)}
       <div class="ptop-row"><button class="btn ${dups >= cheapest ? 'primary' : ''}" data-act="trade-open" data-unit="${n}" ${got === page.length && !dups ? 'disabled' : ''}>${ICON.swap}<span>Tauschen · ${dups} ${dups === 1 ? 'Doppelter' : 'Doppelte'}</span></button>
         <span class="plegend"><span class="lg normal">Normal</span><span class="lg glitzer">★ Glitzer: selten</span><span class="lg gold">★★ Gold: super selten</span></span></div></div></section>

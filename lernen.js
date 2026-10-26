@@ -247,18 +247,20 @@ function toNextSticker(stickers, have, pts) {
 }
 
 /* ======================================================= Panini-Seite (Unité 2)
-   Wie ein Panini-Album (Wunsch 2026-10-26): alle PER_PACK Lernpunkte der Unité gibt es eine Pochette (Päckchen) mit
-   PACK_SIZE Stickern. Jeder Platz im Päckchen ist mit RARITY gold (super selten) oder glitzer (selten), sonst normal;
-   dann ein zufälliger Sticker dieser Art – auch einer, den man schon hat (Doppelte). Im selben Päckchen kommt keiner zweimal.
+   Wie ein Panini-Album (Wunsch 2026-10-26): alle PER_PACK Päckchen-Punkte gibt es eine Pochette (Päckchen) mit PACK_SIZE
+   Stickern. Päckchen-Punkte = jede richtige Antwort (beim 1. Versuch, in jeder Übung der Unité, Memory: jedes Paar) 1 Punkt
+   plus die Lernpunkte (höchster Stand) – so zählt auch freiwilliges Üben, etwa ein Päckchen pro Runde mit Léo.
+   Jeder Platz im Päckchen ist mit RARITY gold (super selten) oder glitzer (selten), sonst normal; dann ein zufälliger
+   Sticker dieser Art – auch einer, den man schon hat (Doppelte). Im selben Päckchen kommt keiner zweimal.
    Doppelte tauscht man bei Léo gegen einen fehlenden Sticker nach Wahl (TRADE = Preis je nach Seltenheit).
    Sind alle Wörter der Unité sicher, gibt es die Pochette spéciale mit allen, die noch fehlen.
-   Simulation 2026-10-26 (Docs/App.md): mit 26 Päckchen und ein paar Bonus-Päckchen ist das Album meist bei etwa
-   90 % der Lernpunkte voll, nur selten braucht es die Pochette spéciale. */
-const PER_PACK = 10, PACK_SIZE = 3;
+   Simulation (test.mjs, Docs/App.md): 129 Sticker, ein Kind mit 80 % Treffern – die Seite ist meist voll, bevor alle
+   Wörter sicher sind; ein fehlerfreies Kind braucht öfter die Pochette spéciale. */
+const PER_PACK = 12, PACK_SIZE = 5;
 const RARITY = { gold: 0.05, glitzer: 0.20 };            // Rest (75 %) normal
 const TRADE = { normal: 4, glitzer: 6, gold: 10 };
 const packsFromPoints = pts => Math.floor(pts / PER_PACK);
-/* Wie viele Lernpunkte noch bis zum nächsten Päckchen? earned = schon verdiente Päckchen aus Punkten */
+/* Wie viele Päckchen-Punkte noch bis zum nächsten Päckchen? earned = schon verdiente Päckchen aus Punkten */
 const toNextPack = (pts, earned) => Math.max(1, (earned + 1) * PER_PACK - pts);
 const rarity = r => (r < RARITY.gold ? 'gold' : r < RARITY.gold + RARITY.glitzer ? 'glitzer' : 'normal');
 /* Ein Päckchen ziehen: cards = die Sticker der Seite; Ergebnis = IDs */

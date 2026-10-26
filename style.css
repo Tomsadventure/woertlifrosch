@@ -379,7 +379,8 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
 .flag { height: 24px; width: auto; flex: none; border-radius: 3px; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .9), 0 1px 3px rgba(0, 0, 0, .3); }
 .pc-wm { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: #fff; color: #E8B437; font-size: 16px; line-height: 1; }
 .pband .pc-wm { padding: 0; font-family: inherit; font-size: 16px; }
-.pgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: center; padding: 12px; }
+/* 16 Plätze je Land (Mannschaftsfoto zählt doppelt): 4 Spalten = 4 volle Reihen, ab 820 px 8 Spalten = 2 Reihen */
+.pgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; align-items: center; padding: 12px; }
 .pslot { position: relative; display: block; min-width: 0; padding: 0; }
 .pslot.quer { grid-column: span 2; }
 .pslot.got:active { transform: scale(.97); }
@@ -389,11 +390,12 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
 .pslot.empty.glitzer { border-color: #CDB2F0; background: linear-gradient(135deg, rgba(255, 214, 245, .45), rgba(214, 236, 255, .45), rgba(218, 255, 214, .45)); color: #8C6DB8; }
 .pslot.empty.gold { border-color: #E3BC5A; background: linear-gradient(135deg, rgba(255, 241, 176, .7), rgba(255, 229, 138, .45)); color: #A8770F; }
 .pnum { font-weight: 800; font-size: clamp(24px, 4vw, 34px); line-height: 1; }
-.plabel { font-family: var(--fr); font-weight: 700; font-size: 13px; line-height: 1.15; }
+.plabel { font-family: var(--fr); font-weight: 700; font-size: 13px; line-height: 1.15; max-width: 100%; overflow-wrap: anywhere; }
+.prole { font-size: 11px; font-weight: 700; opacity: .8; }
 .prar { font-size: 13px; font-weight: 800; }
 .pslot em { position: absolute; top: -6px; right: -6px; z-index: 2; font-style: normal; font-weight: 800; font-size: 12px; color: #fff; background: var(--berry); border-radius: 8px; padding: 1px 7px; animation: pop .5s both; }
 .pdup { position: absolute; top: -6px; left: -6px; z-index: 2; font-size: 12px; color: #fff; background: var(--ink); border-radius: 8px; padding: 1px 6px; }
-@media (min-width: 820px) { .pgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (min-width: 820px) { .pgrid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
 
 /* Panini-Karte */
 .pcard { position: relative; display: block; border-radius: 10px; overflow: hidden; border: 3px solid #fff; background: #fff;
@@ -455,14 +457,21 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
 .pack-stage.tearing { animation: packShake .45s ease-in-out; }
 .pack-stage.tearing .poch-top { animation: tearOff .6s ease-in forwards; }
 .pk-cards { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 16px; margin: 6px 0 4px; perspective: 1200px; }
-.pk-card { position: relative; width: clamp(96px, 27vw, 180px); padding: 0; color: #fff; animation: cardOut .6s cubic-bezier(.3, 1.4, .5, 1) calc(var(--i) * .15s) both; }
+/* Hereinfliegen gestaffelt, aber höchstens 1 s (Pochette spéciale: bis über 100 Karten); umgedrehte fliegen nicht nochmals */
+.pk-card { position: relative; width: clamp(96px, 27vw, 180px); padding: 0; color: #fff; animation: cardOut .6s cubic-bezier(.3, 1.4, .5, 1) calc(min(var(--i), 6) * .15s) both; }
+.pk-card.flipped { animation: none; }
 .pk-card.quer { width: clamp(160px, 46vw, 270px); }
 /* mit einem quer liegenden Sticker (Mannschaftsfoto, Stadion) alle drei etwas kleiner, damit sie in eine Reihe passen */
-.pk-cards.n3.has-quer { gap: 20px 10px; align-items: center; }
-.pk-cards.n3.has-quer .pk-card { width: clamp(80px, 22vw, 150px); }
-.pk-cards.n3.has-quer .pk-card.quer { width: clamp(130px, 38vw, 250px); }
-.pk-cards.n4 .pk-card { width: clamp(84px, 21vw, 150px); }
-.pk-cards.n4 .pk-card.quer { width: clamp(140px, 40vw, 230px); }
+/* 5 Sticker (normales Päckchen): kleiner, damit alles samt Knöpfen auf ein kleines Handy passt (2 Reihen) */
+.pk-cards.n5 { gap: 18px 8px; align-items: center; }
+.pk-cards.n5 .pk-card { width: clamp(76px, 22vw, 140px); }
+.pk-cards.n5 .pk-card.quer { width: clamp(124px, 36vw, 230px); }
+.pk-cards.n5 .pk-name { font-size: 12px; }
+.pk-cards.n5 .pk-tags em { font-size: 10px; padding: 1px 5px; }
+@media (max-width: 560px) { .pk-cards.n5 .pc-band .flag, .pk-cards.n5 .pc-band .pc-wm { display: none; } .pk-cards.n5 .pc-band { font-size: 10px; } }
+/* Pochette spéciale mit vielen Stickern: noch kleiner, man darf scrollen */
+.pk-cards.nx .pk-card { width: clamp(84px, 21vw, 150px); }
+.pk-cards.nx .pk-card.quer { width: clamp(140px, 40vw, 230px); }
 /* Umdrehen wie beim Memory: jede Seite dreht sich selbst (Safari kennt backface-visibility nur so zuverlässig) */
 .pk-in { position: relative; display: block; perspective: 900px; }
 /* visibility wechselt in der Mitte der Drehung: so stimmt es auch dort, wo backface-visibility fehlt (WebKit unter Windows) */
@@ -604,7 +613,14 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
   .pband { padding: 8px 10px; gap: 6px; }
   .pband b { font-size: 17px; }
   .pband span { display: none; }
-  .pgrid { gap: 8px; padding: 10px 8px; }
+  .pgrid { gap: 6px; padding: 10px 6px; }
+  /* kleine Karten (4 nebeneinander): im Band nur Nachname und Nummer, die Flagge steht schon im Kopf des Landes */
+  .pgrid .pc-band { padding: 2px 3px; gap: 2px; font-size: 10px; }
+  .pgrid .pc-band .flag, .pgrid .pc-band .pc-wm { display: none; }
+  .pgrid .pcard { border-width: 2px; border-radius: 8px; }
+  .pnum { font-size: 22px; }
+  .plabel { font-size: 11px; }
+  .prole { font-size: 10px; }
   .album-seg button { font-size: 13px; }
   .album-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; padding: 10px; }
   .slot-stk { min-height: 128px; }
