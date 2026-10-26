@@ -104,8 +104,10 @@ b { font-weight: 800; }
 .hero {
   position: relative; display: flex; align-items: flex-end; gap: 8px; margin: 10px 0 18px; padding: 24px 24px 24px 10px;
   border-radius: var(--r-lg); overflow: hidden; min-height: 300px; box-shadow: var(--lift);
-  background: var(--pad-pattern) 0 0 / 180px 180px, linear-gradient(160deg, #3FBACB, var(--pond) 45%, #2F9A55);
+  background: var(--pad-pattern) 0 0 / 180px 180px, linear-gradient(160deg, var(--u-hi, #3FBACB), var(--u, var(--pond)) 45%, var(--u-lo, #2F9A55));
 }
+/* Kopf und «Üben mit Léo» in der Farbe der gewählten Unité (Listen.csv, wie die Unit-Karte darunter); --u-* setzt homeHTML */
+.hero .btn.primary { background: var(--u, var(--frog)); box-shadow: 0 5px 0 var(--u-deep, var(--frog-deep)), 0 12px 24px rgba(0, 0, 0, .16); }
 .hero-leo { position: relative; z-index: 1; flex: 0 0 auto; width: clamp(150px, 26vw, 240px); margin-bottom: -24px; }
 .hero-leo img { width: 100%; filter: drop-shadow(0 8px 10px rgba(10, 40, 30, .3)); transform-origin: 50% 100%; }
 .bubble { position: relative; z-index: 1; flex: 1; align-self: center; background: var(--card); border-radius: var(--r-lg); padding: 20px 22px; box-shadow: 0 10px 30px rgba(10, 40, 30, .22); }

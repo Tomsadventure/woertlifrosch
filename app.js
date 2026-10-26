@@ -9,6 +9,13 @@ const D = window.DATEN;
 const WORD = Object.fromEntries(D.woerter.map(w => [w.id, w]));
 const STICKER = Object.fromEntries(D.stickers.map(s => [s.id, s]));
 const img = name => `img/${name}.webp`;
+// Farbe mischen: t = 0 … 1 Richtung `to` (hell = heller, #000000 = dunkler) – für den Unit-farbigen Kopf der Startseite
+// (wie Wörtli-Panda); oben links mit warmem Hellgelb statt Weiss, damit der Verlauf leuchtet
+const mix = (hex, to, t) => '#' + [1, 3, 5].map(i => {
+  const a = parseInt(hex.substr(i, 2), 16), b = parseInt(to.substr(i, 2), 16);
+  return Math.round(a + (b - a) * t).toString(16).padStart(2, '0');
+}).join('');
+const unitColors = u => `--u:${u.farbe};--u-hi:${mix(u.farbe, '#fff3b0', .3)};--u-lo:${mix(u.farbe, '#000000', .13)};--u-deep:${mix(u.farbe, '#000000', .3)}`;
 const isPlus = l => /plus/i.test(l.teil);
 const UNITS = [...new Set(D.listen.map(l => l.unit))].map(n => {
   const ls = D.listen.filter(l => l.unit === n);
@@ -596,7 +603,7 @@ function homeHTML() {
         <button class="icon-btn" data-act="settings" aria-label="Einstellungen">${ICON.gear}</button>
       </div>
     </header>
-    <section class="hero">
+    <section class="hero" style="${unitColors(u)}">
       <button class="hero-leo" data-act="leo" aria-label="Léo antippen"><img src="${img('leo_hallo')}" alt="Léo, der Frosch, winkt"></button>
       <div class="bubble">
         <p class="bubble-hi" lang="fr">Salut${nm ? ` ${esc(nm)}` : ''} ! Moi, c'est Léo.</p>
