@@ -128,10 +128,13 @@ function wordPuzzle(w, rnd = Math.random) {
 const puzzleKind = w => (w.typ === 'wort' ? 'buchstaben' : 'woerter');
 
 /* ================================================================ Auswahl */
-/* 4 Möglichkeiten, wenn möglich aus derselben Liste und vom selben Typ */
+/* 4 Möglichkeiten, wenn möglich aus derselben Liste und vom selben Typ. Nie ein Wort mit gleicher Bedeutung
+   (»le salon« / »le séjour« = beide »das Wohnzimmer«) – sonst wären zwei Antworten richtig. */
+const sameMeaning = (a, b) => a.de === b.de || norm(a.fr) === norm(b.fr);
 function choices(words, target, n = 4, rnd = Math.random) {
-  let same = words.filter(w => w.id !== target.id && w.liste === target.liste);
-  if (same.length < n - 1) same = words.filter(w => w.id !== target.id);
+  const others = words.filter(w => w.id !== target.id && !sameMeaning(w, target));
+  let same = others.filter(w => w.liste === target.liste);
+  if (same.length < n - 1) same = others;
   const pref = shuffle(same.filter(w => w.typ === target.typ), rnd);
   const rest = shuffle(same.filter(w => w.typ !== target.typ), rnd);
   return shuffle([target, ...pref.concat(rest).slice(0, n - 1)], rnd);
@@ -215,16 +218,19 @@ function buildDrill(words, kind, opts) {
 function buildTest(words, count, rnd = Math.random) {
   return shuffle(words.slice(), rnd).slice(0, count || words.length).map(w => ({ kind: 'test', id: w.id }));
 }
-/* Memory: n Paare Bild <-> französisches Wort */
+/* Memory: n Paare Bild <-> französisches Wort (keine zwei Wörter mit gleicher Bedeutung, siehe choices) */
 function memoryDeck(words, pairs = 6, rnd = Math.random) {
-  const pick = shuffle(words.slice(), rnd).slice(0, pairs);
+  const pick = [];
+  shuffle(words.slice(), rnd).forEach(w => { if (pick.length < pairs && !pick.some(p => sameMeaning(p, w))) pick.push(w); });
   return shuffle(pick.flatMap(w => [{ id: w.id, side: 'bild' }, { id: w.id, side: 'wort' }]), rnd);
 }
 
 /* ============================================================ Stickeralbum
-   Lernpunkte = Summe der Stufen aller Wörter (Unité 1: 56 Wörter x 5 = 280). Alle PER_STICKER Punkte gibt es den nächsten
-   normalen Sticker (in der Reihenfolge von Stickers.csv). Einmal verdient bleibt verdient, auch wenn Stufen wieder sinken.
-   Glitzer-Sticker gibt es für Spezielles (Bedingung in Stickers.csv, geprüft in app.js). */
+   Jede Unité hat eine Albumseite (Listen.csv → Album). Lernpunkte einer Unité = Summe der Stufen ihrer Wörter.
+   Seite »leo« (Unité 1: 56 Wörter x 5 = 280): alle PER_STICKER Punkte gibt es den nächsten normalen Sticker (in der
+   Reihenfolge von Stickers.csv; stickers = nur die dieser Seite). Einmal verdient bleibt verdient, auch wenn Stufen wieder
+   sinken. Glitzer-Sticker gibt es für Spezielles (Bedingung in Stickers.csv, geprüft in app.js).
+   Seite »panini« (Unité 2): siehe unten. */
 const PER_STICKER = 10;
 const points = (words, W) => words.reduce((s, w) => s + (((W || {})[w.id] || {}).box || 0), 0);
 function stickersEarned(stickers, have, pts) {
@@ -240,9 +246,64 @@ function toNextSticker(stickers, have, pts) {
   return Math.max(1, (owned + 1) * PER_STICKER - pts);
 }
 
+/* ======================================================= Panini-Seite (Unité 2)
+   Wie ein Panini-Album (Wunsch 2026-10-26): alle PER_PACK Lernpunkte der Unité gibt es eine Pochette (Päckchen) mit
+   PACK_SIZE Stickern. Jeder Platz im Päckchen ist mit RARITY gold (super selten) oder glitzer (selten), sonst normal;
+   dann ein zufälliger Sticker dieser Art – auch einer, den man schon hat (Doppelte). Im selben Päckchen kommt keiner zweimal.
+   Doppelte tauscht man bei Léo gegen einen fehlenden Sticker nach Wahl (TRADE = Preis je nach Seltenheit).
+   Sind alle Wörter der Unité sicher, gibt es die Pochette spéciale mit allen, die noch fehlen.
+   Simulation 2026-10-26 (Docs/App.md): mit 26 Päckchen und ein paar Bonus-Päckchen ist das Album meist bei etwa
+   90 % der Lernpunkte voll, nur selten braucht es die Pochette spéciale. */
+const PER_PACK = 10, PACK_SIZE = 3;
+const RARITY = { gold: 0.05, glitzer: 0.20 };            // Rest (75 %) normal
+const TRADE = { normal: 4, glitzer: 6, gold: 10 };
+const packsFromPoints = pts => Math.floor(pts / PER_PACK);
+/* Wie viele Lernpunkte noch bis zum nächsten Päckchen? earned = schon verdiente Päckchen aus Punkten */
+const toNextPack = (pts, earned) => Math.max(1, (earned + 1) * PER_PACK - pts);
+const rarity = r => (r < RARITY.gold ? 'gold' : r < RARITY.gold + RARITY.glitzer ? 'glitzer' : 'normal');
+/* Ein Päckchen ziehen: cards = die Sticker der Seite; Ergebnis = IDs */
+function drawPack(cards, rnd = Math.random, size = PACK_SIZE) {
+  const out = [];
+  while (out.length < Math.min(size, cards.length)) {
+    const art = rarity(rnd());
+    let pool = cards.filter(c => c.art === art && !out.includes(c.id));
+    if (!pool.length) pool = cards.filter(c => !out.includes(c.id));
+    out.push(pool[Math.floor(rnd() * pool.length)].id);
+  }
+  return out;
+}
+/* Pochette spéciale: alle fehlenden (gemischt); fehlen weniger als PACK_SIZE, wird mit gewöhnlichen Zügen aufgefüllt */
+function specialPack(cards, have, rnd = Math.random) {
+  const miss = shuffle(cards.filter(c => !have.includes(c.id)).map(c => c.id), rnd);
+  return miss.concat(drawPack(cards.filter(c => !miss.includes(c.id)), rnd, Math.max(0, PACK_SIZE - miss.length)));
+}
+/* Einkleben: P = { have: [IDs im Album], dup: {ID: Anzahl Doppelte} } wird verändert. Ergebnis [{ id, neu }] */
+function stick(P, ids) {
+  return ids.map(id => {
+    if (P.have.includes(id)) { P.dup[id] = (P.dup[id] || 0) + 1; return { id, neu: false }; }
+    P.have.push(id);
+    return { id, neu: true };
+  });
+}
+const dupCount = (dup, ids) => Object.entries(dup || {}).filter(([id]) => !ids || ids.includes(id)).reduce((s, [, n]) => s + n, 0);
+const tradeCost = card => TRADE[card.art] || TRADE.normal;
+/* Tauschen: tradeCost(card) Doppelte (aus ids = den Stickern dieser Seite) gegen card abgeben – zuerst die, von denen
+   man am meisten hat. Gibt false zurück, wenn es nicht geht. */
+function trade(P, card, ids) {
+  const cost = tradeCost(card);
+  if (P.have.includes(card.id) || dupCount(P.dup, ids) < cost) return false;
+  for (let k = 0; k < cost; k++) {
+    const id = Object.keys(P.dup).filter(x => ids.includes(x) && P.dup[x] > 0).sort((a, b) => P.dup[b] - P.dup[a] || (a < b ? -1 : 1))[0];
+    if (--P.dup[id] <= 0) delete P.dup[id];
+  }
+  P.have.push(card.id);
+  return true;
+}
+
 const api = { MAX, PER_STICKER, blank, record, norm, bare, isRight, onlyAccents, closest, diff, letterPuzzle, wordPuzzle,
   wordTokens, puzzleKind, choices, buildSession, buildDrill, buildTest, memoryDeck, shuffle, spellKind, points,
-  stickersEarned, toNextSticker };
+  stickersEarned, toNextSticker, PER_PACK, PACK_SIZE, RARITY, TRADE, packsFromPoints, toNextPack, drawPack, specialPack,
+  stick, dupCount, tradeCost, trade };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 else root.Lernen = api;
 })(typeof window !== 'undefined' ? window : globalThis);

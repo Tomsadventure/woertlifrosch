@@ -1,6 +1,7 @@
 /* Wörtli-Frosch – Französisch-Wörter lernen mit Léo, dem Frosch (6. Klasse, Schweiz).
    Eine Seite, kein Framework. Wörter aus daten.js, Lernlogik aus lernen.js, Fortschritt auf dem Gerät (localStorage).
-   Gleich aufgebaut wie Wörtli-Panda; neu: zwei Wortlisten je Unit (Vocabulaire / Vocabulaire plus), Akzente, Stickeralbum. */
+   Gleich aufgebaut wie Wörtli-Panda; neu: zwei Wortlisten je Unit (Vocabulaire / Vocabulaire plus), Akzente, Stickeralbum
+   mit einer Seite je Unité (Unité 1: Léo-Sticker, Unité 2: Panini-Album der Frosch-WM mit Päckchen und Tauschen). */
 (() => {
 'use strict';
 const L = window.Lernen;
@@ -11,9 +12,11 @@ const img = name => `img/${name}.webp`;
 const isPlus = l => /plus/i.test(l.teil);
 const UNITS = [...new Set(D.listen.map(l => l.unit))].map(n => {
   const ls = D.listen.filter(l => l.unit === n);
-  return { n, lists: ls, aktiv: ls.some(l => l.aktiv), titel: ls[0].titel, thema: ls[0].thema, farbe: ls[0].farbe };
+  return { n, lists: ls, aktiv: ls.some(l => l.aktiv), titel: ls[0].titel, thema: ls[0].thema, farbe: ls[0].farbe, album: ls[0].album || 'leo' };
 });
 const UNIT = Object.fromEntries(UNITS.map(u => [u.n, u]));
+const ACTIVE = UNITS.filter(u => u.aktiv);
+const TEAM = Object.fromEntries((D.teams || []).map(t => [t.id, t]));
 const TEILE = [['grund', 'Vocabulaire'], ['plus', 'Vocabulaire plus'], ['beide', 'Beides']];
 
 /* ================================================================ Speicher */
@@ -35,6 +38,8 @@ function load() {
     tests: Array.isArray(d.tests) ? d.tests.slice(-20) : [],
     stickers: arr(d.stickers, 999),                           // verdiente Sticker (Reihenfolge = wann verdient)
     neu: arr(d.neu, 999),                                     // verdient, aber im Album noch nicht angeschaut
+    dup: d.dup && typeof d.dup === 'object' ? Object.fromEntries(Object.entries(d.dup).filter(([id, n]) => STICKER[id] && n > 0)) : {},   // Doppelte (Panini)
+    pk: d.pk && typeof d.pk === 'object' ? d.pk : {},          // Päckchen je Unité (Panini): { pts, bonus, special, opened }
     albumSeen: !!d.albumSeen,
     hintClosed: !!d.hintClosed,
     installed: !!d.installed,
@@ -83,7 +88,26 @@ const ICON = {
   lock: I('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>'),
   sticker: I('<path d="M20 12V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6"/><path d="M20 12l-8 8c0-4.4 3.6-8 8-8z"/><path d="M8.5 10.5l1.2 1.2 2.6-3"/>'),
   star: I('<path d="M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6L3.4 9.3l6-.7z"/>'),
+  pack: I('<path d="M6 3l1.5 1.5L9 3l1.5 1.5L12 3l1.5 1.5L15 3l1.5 1.5L18 3v18l-1.5-1.5L15 21l-1.5-1.5L12 21l-1.5-1.5L9 21l-1.5-1.5L6 21z"/><circle cx="12" cy="11" r="3"/><path d="M9 16.5h6"/>'),
+  swap: I('<path d="M4 8h13M13 4l4 4-4 4"/><path d="M20 16H7M11 12l-4 4 4 4"/>'),
 };
+/* Flaggen der Panini-Seite (selbst gezeichnet, keine Wappen der Verbände) */
+const star5 = (cx, cy, R) => Array.from({ length: 10 }, (_, k) => {
+  const a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? R * 0.4 : R;
+  return `${(cx + r * Math.cos(a)).toFixed(3)},${(cy + r * Math.sin(a)).toFixed(3)}`;
+}).join(' ');
+const FLAG = {
+  SUI: '<rect width="32" height="32" fill="#D52B1E"/><path d="M13 6h6v7h7v6h-7v7h-6v-7H6v-6h7z" fill="#fff"/>',
+  FRA: '<rect width="10" height="20" fill="#002395"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#ED2939"/>',
+  GER: '<rect width="30" height="6" fill="#000"/><rect y="6" width="30" height="6" fill="#DD0000"/><rect y="12" width="30" height="6" fill="#FFCE00"/>',
+  ESP: '<rect width="30" height="20" fill="#AA151B"/><rect y="5" width="30" height="10" fill="#F1BF00"/>',
+  ITA: '<rect width="10" height="20" fill="#009246"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#CE2B37"/>',
+  BRA: '<rect width="30" height="21" fill="#009C3B"/><path d="M15 2.5L27.5 10.5 15 18.5 2.5 10.5z" fill="#FFDF00"/><circle cx="15" cy="10.5" r="5.2" fill="#002776"/>',
+  ARG: '<rect width="30" height="20" fill="#74ACDF"/><rect y="6.67" width="30" height="6.67" fill="#fff"/><circle cx="15" cy="10" r="2.4" fill="#F6B40E"/>',
+  SEN: `<rect width="10" height="20" fill="#00853F"/><rect x="10" width="10" height="20" fill="#FDEF42"/><rect x="20" width="10" height="20" fill="#E31B23"/><polygon points="${star5(15, 10.4, 3.6)}" fill="#00853F"/>`,
+};
+const FLAG_BOX = { SUI: '0 0 32 32', GER: '0 0 30 18', BRA: '0 0 30 21' };
+const flagHTML = code => (FLAG[code] ? `<svg class="flag" viewBox="${FLAG_BOX[code] || '0 0 30 20'}" aria-hidden="true">${FLAG[code]}</svg>` : '');
 /* Lernstufe als 5 Seerosenblätter (0–5 gefüllt) */
 function levelHTML(box, cls = '') {
   const b = Math.max(0, Math.min(5, box));
@@ -216,6 +240,25 @@ const Sound = (() => {
       env(g, t, 0.01, 0.12, 0.18); o.connect(f); f.connect(g); g.connect(sfxBus); o.start(t); o.stop(t + 0.3);
       [88, 91, 96, 100, 103].forEach((m, i) => bell(note(m), t + 0.22 + i * 0.07, 0.5));
     },
+    /* Päckchen aufreissen: kurzes Rauschen, das tiefer wird */
+    tear() {
+      if (!on()) return;
+      const t = ctx.currentTime + 0.01, len = 0.32, b = ctx.createBuffer(1, Math.floor(ctx.sampleRate * len), ctx.sampleRate);
+      const d = b.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (0.6 + 0.4 * Math.random());
+      const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      s.buffer = b; f.type = 'bandpass'; f.Q.value = 1.4;
+      f.frequency.setValueAtTime(3200, t); f.frequency.exponentialRampToValueAtTime(700, t + len);
+      env(g, t, 0.01, 0.5, len); s.connect(f); f.connect(g); g.connect(sfxBus); s.start(t); s.stop(t + len + 0.05);
+    },
+    /* Gold-Sticker: kleine Fanfare */
+    gold() {
+      if (!on()) return;
+      const t = ctx.currentTime + 0.02;
+      [67, 72, 76, 79].forEach((m, i) => { marimba(note(m), t + i * 0.09, 0.9); osc('triangle', note(m), t + i * 0.09, 0.25, 0.05, sfxBus); });
+      [84, 88, 91, 96].forEach(m => bell(note(m), t + 0.4, 0.45));
+      [100, 103, 108].forEach((m, i) => bell(note(m), t + 0.7 + i * 0.08, 0.4));
+    },
   };
   return { say, stop, preload, sfx, ready, busy };
 })();
@@ -264,6 +307,7 @@ function nav(name, params = {}, push = true) {
 }
 window.addEventListener('popstate', e => {
   const s = e.state || { name: 'home' };
+  if (PK) { PK = null; packRoot.classList.remove('open'); packRoot.innerHTML = ''; }
   clearTimeout(timer);
   const from = view.name;
   if (['task', 'memory', 'result'].includes(from)) { Q = null; Sound.stop(); }
@@ -278,58 +322,253 @@ function render() {
   if (view.name === 'task') { app.innerHTML = taskShellHTML(); showTask(); return; }
   app.innerHTML = R[view.name]();
   if (view.name === 'karten') afterKarte();
-  if (view.name === 'album' && S.neu.length) { S.neu = []; S.albumSeen = true; save(); }
+  if (view.name === 'album') {                                       // »Neu« gilt, bis man die Seite gesehen hat
+    const n = albumPage();
+    if (S.neu.some(id => STICKER[id].unit === n)) { S.neu = S.neu.filter(id => STICKER[id].unit !== n); S.albumSeen = true; save(); }
+  }
 }
 
-/* ------------------------------------------------------------- Sticker */
+/* ------------------------------------------------------------- Sticker
+   Jede Unité hat eine Albumseite (Listen.csv → Album): »leo« = Léo-Sticker der Reihe nach (Unité 1),
+   »panini« = Päckchen mit Seltenheit, Doppelten und Tauschen (Unité 2; Regeln in lernen.js → Panini-Seite). */
 const allPoints = () => L.points(D.woerter, S.w);
-/* Neu verdiente Sticker eintragen. ctx: { runde, test100, serie10, memory9 } aus der eben beendeten Übung */
+const unitWords = n => D.woerter.filter(w => w.unit === n);
+const unitPoints = n => L.points(unitWords(n), S.w);
+const unitStickers = (n, art) => D.stickers.filter(s => s.unit === n && (!art || s.art === art));
+const isPanini = n => !!UNIT[n] && UNIT[n].album === 'panini';
+const allSafe = ws => ws.length > 0 && sicher(ws) === ws.length;
+const NUM = {};                                                     // Nummer im Album wie bei Panini (je Seite 1 …)
+ACTIVE.forEach(u => unitStickers(u.n).forEach((s, i) => { NUM[s.id] = i + 1; }));
+/* Päckchen einer Unité: pts = aus Lernpunkten verdient, bonus = Bedingungen schon erfüllt,
+   special = Pochette spéciale (0 nein, 1 verdient, 2 geöffnet), opened = geöffnete Päckchen */
+const pk = n => (S.pk[n] = Object.assign({ pts: 0, bonus: [], special: 0, opened: 0 }, S.pk[n]));
+const packsPending = n => { const p = pk(n); return p.pts + p.bonus.length + (p.special ? 1 : 0) - p.opened; };
+/* Welches Päckchen kommt als nächstes? Die Pochette spéciale immer zuletzt (vorher können die anderen noch Lücken füllen) */
+function nextPackKind(n) {
+  const p = pk(n), normal = p.pts + p.bonus.length - (p.opened - (p.special === 2 ? 1 : 0));
+  return normal > 0 ? 'normal' : p.special === 1 ? 'special' : null;
+}
+const pageFull = n => unitStickers(n).every(s => S.stickers.includes(s.id));
+const pageDups = n => L.dupCount(S.dup, unitStickers(n).map(s => s.id));
+const BONUS = ['runde1', 'test100', 'serie10', 'memory9'];
+/* Neu Verdientes eintragen. ctx: { unit, runde1, test100, serie10, memory9 } aus der eben beendeten Übung.
+   Ergebnis: { stickers: neue Léo-Sticker, packs: neue Päckchen ('punkte', eine Bedingung oder 'special') } */
 function checkStickers(ctx = {}) {
-  const neu = L.stickersEarned(D.stickers, S.stickers, allPoints());
-  D.stickers.filter(s => s.art === 'glitzer' && !S.stickers.includes(s.id)).forEach(s => {
-    const b = s.bedingung;
-    let ok = !!ctx[b];
-    if (b.startsWith('liste:')) { const ws = D.woerter.filter(w => w.liste === b.slice(6)); ok = ws.length > 0 && sicher(ws) === ws.length; }
-    if (ok) neu.push(s.id);
+  const res = { stickers: [], packs: [] };
+  ACTIVE.forEach(u => {
+    const n = u.n, pts = unitPoints(n);
+    if (!isPanini(n)) {
+      const neu = L.stickersEarned(unitStickers(n), S.stickers, pts);
+      unitStickers(n, 'glitzer').filter(s => !S.stickers.includes(s.id)).forEach(s => {
+        const b = s.bedingung;
+        if (b.startsWith('liste:') ? allSafe(listWords([b.slice(6)])) : ctx.unit === n && ctx[b]) neu.push(s.id);
+      });
+      res.stickers.push(...neu);
+      return;
+    }
+    const p = pk(n), earned = L.packsFromPoints(pts);
+    for (; p.pts < earned; p.pts++) res.packs.push('punkte');
+    BONUS.forEach(b => { if (ctx.unit === n && ctx[b] && !p.bonus.includes(b)) { p.bonus.push(b); res.packs.push(b); } });
+    u.lists.filter(l => l.aktiv).forEach(l => {
+      const b = `liste:${l.id}`;
+      if (!p.bonus.includes(b) && allSafe(listWords([l.id]))) { p.bonus.push(b); res.packs.push(b); }
+    });
+    if (!p.special && allSafe(unitWords(n))) { p.special = 1; res.packs.push('special'); }
   });
-  if (neu.length) { S.stickers.push(...neu); S.neu.push(...neu); save(); }
-  return neu;
+  if (res.stickers.length) { S.stickers.push(...res.stickers); S.neu.push(...res.stickers); }
+  if (res.stickers.length || res.packs.length) save();
+  return res;
 }
 const BEDINGUNG = { runde1: 'Die erste Runde mit Léo', test100: 'Wörtlitest ohne Fehler (ab 10 Wörtern)', serie10: '10 richtig hintereinander',
   memory9: 'Memory in höchstens 9 Zügen' };
-function bedingungText(s) {
-  if (s.bedingung.startsWith('liste:')) {
-    const l = D.listen.find(x => x.id === s.bedingung.slice(6));
+function bedingungText(b) {
+  if (b.startsWith('liste:')) {
+    const l = D.listen.find(x => x.id === b.slice(6));
     return l ? `Alle Wörter von ${l.titel} ${l.teil} sicher` : '';
   }
-  return BEDINGUNG[s.bedingung] || '';
+  return BEDINGUNG[b] || '';
 }
-function nextStickerText() {
-  const n = L.toNextSticker(D.stickers, S.stickers, allPoints());
-  return n == null ? 'Alle normalen Sticker gesammelt!' : `Nächster Sticker: noch ${n} ${n === 1 ? 'Lernpunkt' : 'Lernpunkte'}`;
+/* Wofür gab es das Päckchen? */
+const packWhy = k => (k === 'punkte' ? `${L.PER_PACK} Lernpunkte` : k === 'special' ? 'Alle Wörter sicher – Pochette spéciale!' : `Bonus: ${bedingungText(k)}`);
+/* Nächster Sticker / nächstes Päckchen der Unité n: { text, pct, act } */
+function nextInfo(n = S.unit) {
+  const plural = k => `${k} ${k === 1 ? 'Lernpunkt' : 'Lernpunkte'}`;
+  if (isPanini(n)) {
+    const open = packsPending(n);
+    if (open > 0) return { text: open === 1 ? 'Ein Päckchen zum Öffnen!' : `${open} Päckchen zum Öffnen!`, pct: 100, act: 'open-pack', icon: 'pack' };
+    if (pageFull(n)) return { text: 'Album-Seite voll!', pct: 100, icon: 'pack' };
+    const left = L.toNextPack(unitPoints(n), pk(n).pts);
+    return { text: `Nächstes Päckchen: noch ${plural(left)}`, pct: Math.round(100 * (L.PER_PACK - Math.min(left, L.PER_PACK)) / L.PER_PACK), icon: 'pack' };
+  }
+  const left = L.toNextSticker(unitStickers(n), S.stickers, unitPoints(n));
+  return left == null ? { text: 'Alle normalen Sticker gesammelt!', pct: 100, icon: 'sticker' }
+    : { text: `Nächster Sticker: noch ${plural(left)}`, pct: Math.round(100 * (L.PER_STICKER - left) / L.PER_STICKER), icon: 'sticker' };
 }
-function nextStickerPct() {
-  const n = L.toNextSticker(D.stickers, S.stickers, allPoints());
-  return n == null ? 100 : Math.round(100 * (L.PER_STICKER - n) / L.PER_STICKER);
+/* Der Knopf »Nächster Sticker …« (Startseite, Ergebnis, Album). static = im Album ohne Klick, ausser es gibt ein Päckchen */
+function nextStkHTML(cls = '', n = S.unit) {
+  const i = nextInfo(n), tag = cls.includes('static') && !i.act ? 'div' : 'button';
+  return `<${tag} class="next-stk ${cls} ${i.act ? 'has-pack' : ''}" ${tag === 'button' ? `data-act="${i.act || 'album'}" data-unit="${n}"` : ''}><span class="next-stk-t">${ICON[i.icon]}${i.text}</span><span class="progress small"><i style="width:${i.pct}%"></i></span></${tag}>`;
 }
 /* Sticker im Rahmen; Glitzer-Sticker bekommen einen wandernden Lichtstreifen (style.css, Maske = das Bild selbst) */
 const stickerImg = (id, cls = '') => `<span class="stk-wrap ${STICKER[id].art === 'glitzer' ? 'glitzer' : ''} ${cls}" style="--m:url(${img(id)})"><img class="stk" src="${img(id)}" alt="${esc(STICKER[id].de)}"></span>`;
 const newStickersHTML = ids => `<div class="new-stk">${ids.slice(0, 4).map((id, i) => `<button class="new-stk-i ${STICKER[id].art === 'glitzer' ? 'glitzer' : ''}" data-act="sticker" data-id="${id}" style="--i:${i}">
   ${stickerImg(id)}<span class="stk-t" lang="fr">${esc(STICKER[id].titel)}</span></button>`).join('')}</div>`;
-/* Ausserhalb einer Runde verdiente Sticker (z. B. in den Lernkarten): kurz als Blatt zeigen */
+/* Panini-Karte: Bild mit Band (Flagge, Kürzel, Aufschrift, Nummer); glitzer/gold mit Folien-Effekt (style.css) */
+const teamColors = s => { const t = TEAM[s.team]; return t ? `--t1:${t.farben[0]};--t2:${t.farben[1] || t.farben[0]}` : '--t1:#2D781B;--t2:#FFC83A'; };
+const cardHTML = (id, cls = '') => {
+  const s = STICKER[id];
+  return `<span class="pcard ${s.art} ${s.format} ${cls}" style="${teamColors(s)}"><img src="${img(id)}" alt="${esc(s.de)}" loading="lazy">
+    <span class="pc-band">${s.team ? flagHTML(s.team) : '<b class="pc-wm">★</b>'}<span lang="fr">${esc(s.kurz)}</span><i>${NUM[id]}</i></span></span>`;
+};
+/* Ein Päckchen als Bild (CSS): klein auf dem Ergebnis-Bildschirm, gross zum Aufreissen */
+const pochetteHTML = (kind = 'normal', cls = '') => `<span class="pochette ${kind === 'special' ? 'special' : ''} ${cls}"><span class="poch-top"></span>
+  <span class="poch-body"><img src="${img('leo_fussball')}" alt=""><b lang="fr">Coupe du monde<br>des grenouilles</b><small>${kind === 'special' ? 'Pochette spéciale' : `Pochette · ${L.PACK_SIZE} stickers`}</small></span></span>`;
+/* Ausserhalb einer Runde Verdientes (Lernkarten, Memory): kurz als Blatt zeigen */
 function stickerToast() {
-  const neu = checkStickers();
-  if (!neu.length) return;
+  const r = checkStickers();
+  if (!r.stickers.length && !r.packs.length) return;
   if (view.name === 'home') render();                              // Zähler im Album-Knopf
-  setTimeout(() => {
-    openSheet('sticker-neu', `<div class="sheet-head"><h2>${neu.length === 1 ? 'Neuer Sticker!' : `${neu.length} neue Sticker!`}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
-      <div class="sheet-body center">${newStickersHTML(neu)}<div class="confirm-actions"><button class="btn primary" data-act="album">${ICON.sticker}<span>Zum Album</span></button></div></div>`);
-    celebrateSticker(neu);
-  }, 250);
+  setTimeout(() => { openSheet('sticker-neu', rewardSheetHTML(r)); celebrate(r); }, 250);
+}
+function rewardSheetHTML(r, head) {
+  const t = r.packs.length ? (r.packs.length === 1 ? 'Neues Päckchen!' : `${r.packs.length} neue Päckchen!`) : r.stickers.length === 1 ? 'Neuer Sticker!' : `${r.stickers.length} neue Sticker!`;
+  return `<div class="sheet-head"><h2>${head || t}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
+    <div class="sheet-body center">${r.stickers.length ? newStickersHTML(r.stickers) : ''}${r.packs.length ? packsGotHTML(r.packs) : ''}
+    ${r.packs.length ? '' : `<div class="confirm-actions"><button class="btn primary" data-act="album">${ICON.sticker}<span>Zum Album</span></button></div>`}</div>`;
+}
+/* Neue Päckchen: Bild, wofür, Knopf zum Öffnen */
+const packsGotHTML = packs => `<div class="pack-row">${packs.slice(0, 4).map((k, i) => `<span class="pack-got" style="--i:${i}">${pochetteHTML(k, 'mini')}</span>`).join('')}</div>
+  <p class="pack-why">${[...new Set(packs.map(packWhy))].map(esc).join(' · ')}</p>
+  <button class="btn primary big" data-act="open-pack" data-unit="${paniniUnit()}">${ICON.pack}<span><b>Jetzt öffnen</b></span></button>`;
+const paniniUnit = () => (isPanini(S.unit) ? S.unit : (ACTIVE.find(u => isPanini(u.n)) || { n: S.unit }).n);
+function celebrate(r) {
+  if (r.stickers.length) return celebrateSticker(r.stickers);
+  if (!r.packs.length) return;
+  sfx.sticker();
+  leo([{ pause: 200 }, r.packs.includes('special') ? 'leo_champion' : r.packs.includes('punkte') ? 'leo_pochette' : 'leo_pochette_bonus'], true);
 }
 function celebrateSticker(ids) {
   sfx.sticker();
   leo([{ pause: 200 }, ids.some(id => STICKER[id].art === 'glitzer') ? 'leo_sticker_glitzer' : 'leo_sticker'], true);
+}
+
+/* ------------------------------------------------- Päckchen öffnen (Panini)
+   Ein Overlay über allem: zuerst das Päckchen (antippen = aufreissen), dann die Sticker verdeckt; jeder wird mit Antippen
+   umgedreht – seltene glitzern, Gold gibt eine Fanfare. Gezogen und eingeklebt wird beim Aufreissen (dann ist es gespeichert). */
+const packRoot = document.getElementById('pack-root');
+let PK = null;                       // { n, kind, got: [{id, neu}], shown: Set, torn }
+function openPack(n) {
+  if (!isPanini(n) || !nextPackKind(n)) return;
+  closeSheet(true);
+  PK = { n, kind: nextPackKind(n), got: [], shown: new Set(), torn: false };
+  renderPack();
+  requestAnimationFrame(() => packRoot.classList.add('open'));
+  sfx.tap();
+}
+function tearPack() {
+  if (!PK || PK.torn) return;
+  const n = PK.n, p = pk(n), cards = unitStickers(n);
+  const ids = PK.kind === 'special' ? L.specialPack(cards, S.stickers) : L.drawPack(cards);
+  PK.got = L.stick({ have: S.stickers, dup: S.dup }, ids);
+  PK.got.filter(g => g.neu).forEach(g => S.neu.push(g.id));
+  p.opened++;
+  if (PK.kind === 'special') p.special = 2;
+  save();
+  PK.torn = true;
+  ids.forEach(id => { new Image().src = img(id); });
+  Sound.preload(ids);
+  sfx.tear();
+  const el = packRoot.querySelector('.pack-stage');
+  if (el && !reduced()) { el.classList.add('tearing'); setTimeout(renderPack, 650); } else renderPack();
+}
+function flipCard(i) {
+  if (!PK || !PK.torn || PK.shown.has(i)) return;
+  PK.shown.add(i);
+  const g = PK.got[i], s = STICKER[g.id], el = packRoot.querySelector(`.pk-card[data-i="${i}"]`);
+  if (el) el.classList.add('flipped');
+  const lines = [];
+  if (s.art === 'gold') { sfx.gold(); if (!reduced()) confetti(60); if (g.neu && voiceOn()) lines.push('leo_or', { pause: 150 }); }
+  else if (s.art === 'glitzer') { sfx.sparkle(); if (el && !reduced()) burst(el, 14); if (g.neu && voiceOn()) lines.push('leo_rare', { pause: 150 }); }
+  else sfx.flip();
+  Sound.say(lines.concat([g.id]));
+  if (PK.shown.size === PK.got.length) setTimeout(() => { if (PK) { const a = packRoot.querySelector('.pack-after'); if (a) a.innerHTML = packAfterHTML(); } }, 500);
+}
+function flipAll() { if (PK) PK.got.forEach((g, i) => { if (!PK.shown.has(i)) { PK.shown.add(i); } }); renderPack(); }
+function packAfterHTML() {
+  if (!PK || PK.shown.size < PK.got.length) return PK && PK.got.length > 3 ? `<button class="btn" data-act="pack-all">Alle umdrehen</button>` : '<p class="pack-hint">Tippe die Sticker an, um sie umzudrehen!</p>';
+  const neu = PK.got.filter(g => g.neu).length, dup = PK.got.length - neu, more = packsPending(PK.n);
+  return `<p class="pack-sum">${neu ? `<b>${neu} neu</b>` : 'Nichts Neues'}${dup ? ` · ${dup} doppelt` : ''}${dup ? ' – Doppelte kannst du im Album tauschen.' : ''}</p>
+    <div class="confirm-actions">${more ? `<button class="btn primary" data-act="open-pack" data-unit="${PK.n}">${ICON.pack}<span>Nächstes Päckchen (${more})</span></button>` : ''}
+    <button class="btn ${more ? '' : 'primary'}" data-act="pack-album">${ICON.sticker}<span>Ins Album</span></button></div>`;
+}
+function renderPack() {
+  if (!PK) { packRoot.innerHTML = ''; return; }
+  const stage = !PK.torn
+    ? `<button class="pack-stage" data-act="pack-tear" aria-label="Päckchen aufreissen">${pochetteHTML(PK.kind, 'big')}</button><p class="pack-hint">Tippe aufs Päckchen, um es aufzureissen!</p>`
+    : `<div class="pk-cards n${Math.min(PK.got.length, 4)}">${PK.got.map((g, i) => {
+        const s = STICKER[g.id], open = PK.shown.has(i);
+        return `<button class="pk-card ${s.art} ${s.format} ${open ? 'flipped' : ''}" data-act="pack-flip" data-i="${i}" style="--i:${i}" aria-label="${open ? esc(s.titel) : 'Sticker umdrehen'}">
+          <span class="pk-in"><span class="pk-back"><img src="icons/favicon.png" alt=""></span>
+          <span class="pk-front">${cardHTML(g.id)}<span class="pk-tags">${g.neu ? '<em class="t-neu">Neu</em>' : '<em class="t-dup">Doppelt</em>'}${s.art === 'gold' ? '<em class="t-gold">★★ Gold</em>' : s.art === 'glitzer' ? '<em class="t-glitzer">★ Glitzer</em>' : ''}</span></span></span>
+          <span class="pk-name" lang="fr">${esc(s.titel)}</span></button>`;
+      }).join('')}</div>`;
+  packRoot.innerHTML = `<div class="pack-bg"></div><div class="pack-box" role="dialog" aria-modal="true" aria-label="Päckchen">
+    <button class="icon-btn pack-x" data-act="pack-close" aria-label="Schliessen">${ICON.close}</button>
+    <h2 class="pack-h">${PK.kind === 'special' ? 'Pochette spéciale!' : PK.torn ? 'Was ist drin?' : 'Ein Päckchen für dich!'}</h2>
+    ${stage}<div class="pack-after">${PK.torn ? packAfterHTML() : ''}</div></div>`;
+}
+function closePack(then) {
+  const n = PK ? PK.n : S.unit;
+  PK = null;
+  packRoot.classList.remove('open');
+  packRoot.innerHTML = '';
+  Sound.stop();
+  if (then === 'album') { albumN = n; nav('album'); }
+  else if (['home', 'album', 'result'].includes(view.name)) render();
+  checkComplete(n);
+}
+/* Seite voll: einmal feiern */
+function checkComplete(n) {
+  if (!isPanini(n) || !pageFull(n) || pk(n).complete) return;
+  pk(n).complete = true; save();
+  setTimeout(() => { leo('leo_coupe_complete', true); sfx.gold(); if (!reduced()) confetti(80); }, 500);
+}
+
+/* ------------------------------------------------------ Tauschen bei Léo */
+function tradeHTML(n, gotId) {
+  const cards = unitStickers(n), ids = cards.map(s => s.id), dups = pageDups(n);
+  const missing = cards.filter(s => !S.stickers.includes(s.id));
+  const dupList = Object.entries(S.dup).filter(([id, k]) => ids.includes(id) && k > 0).sort((a, b) => NUM[a[0]] - NUM[b[0]]);
+  const RAR = { normal: '', glitzer: '★ ', gold: '★★ ' };
+  return `<div class="sheet-head"><h2>Tauschen bei Léo</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
+  <div class="sheet-body tausch">
+    ${gotId ? `<div class="tausch-got">${cardHTML(gotId, 'big')}<p><b>Eingetauscht und eingeklebt!</b></p></div>` : ''}
+    <p class="tausch-info">Du hast <b>${dups} ${dups === 1 ? 'Doppelten' : 'Doppelte'}</b>. ${missing.length ? `Wähle einen Sticker, der dir fehlt. Preis: normal ${L.TRADE.normal}, ★ Glitzer ${L.TRADE.glitzer}, ★★ Gold ${L.TRADE.gold} Doppelte.` : 'Dir fehlt kein Sticker mehr!'}</p>
+    ${missing.length ? `<div class="tausch-grid">${missing.map(s => {
+      const cost = L.tradeCost(s), ok = dups >= cost;
+      return `<button class="tausch-i ${s.art} ${ok ? '' : 'zu-teuer'}" data-act="trade" data-id="${s.id}" style="${teamColors(s)}">
+        <span class="ti-num">${NUM[s.id]}</span><span class="ti-team">${s.team ? flagHTML(s.team) : ''}${s.team || 'WM'}</span>
+        <span class="ti-kurz" lang="fr">${esc(s.kurz)}</span><span class="ti-cost">${RAR[s.art]}${cost} Doppelte</span></button>`;
+    }).join('')}</div>` : ''}
+    <h3 class="tausch-h">Deine Doppelten</h3>
+    ${dupList.length ? `<div class="dup-list">${dupList.map(([id, k]) => `<button class="dup-i" data-act="sticker" data-id="${id}">${cardHTML(id, 'mini')}<b>×${k}</b></button>`).join('')}</div>` : '<p class="set-note">Noch keine Doppelten. Die bekommst du in den Päckchen.</p>'}
+  </div>`;
+}
+function doTrade(id, btn) {
+  const n = STICKER[id].unit, s = STICKER[id];
+  if (!L.trade({ have: S.stickers, dup: S.dup }, s, unitStickers(n).map(x => x.id))) {
+    nope(btn);
+    const info = document.querySelector('.tausch-info');
+    if (info) info.innerHTML = `Für <b lang="fr">${esc(s.kurz)}</b> brauchst du ${L.tradeCost(s)} Doppelte – du hast ${pageDups(n)}. Öffne weitere Päckchen!`;
+    return;
+  }
+  S.neu.push(id); save();
+  sfx.sticker();
+  leo('leo_echange_ok');
+  Sound.say(id, true);
+  openSheet('tausch', tradeHTML(n, id));
+  if (view.name === 'album') { const y = window.scrollY; render(); window.scrollTo(0, y); }
+  checkComplete(n);
 }
 
 /* ------------------------------------------------------------------ Start */
@@ -353,7 +592,7 @@ function homeHTML() {
     <header class="bar">
       <button class="brand" data-act="hello" aria-label="Wörtli-Frosch – Léo sagt Hallo"><img src="icons/favicon.png" alt=""><span>Wörtli-Frosch</span></button>
       <div class="bar-right">
-        <button class="pill ${S.neu.length ? 'has-new' : ''}" data-act="album" aria-label="Stickeralbum: ${S.stickers.length} von ${D.stickers.length} Stickern">${ICON.sticker}<span class="pill-t">Album</span><b>${S.stickers.length}/${D.stickers.length}</b></button>
+        <button class="pill ${S.neu.length || ACTIVE.some(x => isPanini(x.n) && packsPending(x.n) > 0) ? 'has-new' : ''}" data-act="album" aria-label="Stickeralbum: ${S.stickers.length} von ${D.stickers.length} Stickern">${ICON.sticker}<span class="pill-t">Album</span><b>${S.stickers.length}/${D.stickers.length}</b></button>
         <button class="icon-btn" data-act="settings" aria-label="Einstellungen">${ICON.gear}</button>
       </div>
     </header>
@@ -363,7 +602,7 @@ function homeHTML() {
         <p class="bubble-hi" lang="fr">Salut${nm ? ` ${esc(nm)}` : ''} ! Moi, c'est Léo.</p>
         <p>Wir üben <b>${u.titel}</b> · ${esc(selName())}</p>
         <button class="btn primary big" data-act="start-leo"><span><b>Üben mit Léo</b><small>${sessionPreview()}</small></span>${ICON.next}</button>
-        <button class="next-stk" data-act="album"><span class="next-stk-t">${ICON.sticker}${nextStickerText()}</span><span class="progress small"><i style="width:${nextStickerPct()}%"></i></span></button>
+        ${nextStkHTML()}
       </div>
     </section>
     <section class="unit-head" style="--u:${u.farbe}">
@@ -737,15 +976,16 @@ function finish() {
     res.mistakes = Q.results.filter(r => r && !r.first).map(r => ({ id: r.id, answer: r.answer || '' }));
     S.tests.push({ unit: S.unit, teil: S.teil, t: Date.now(), right: firstRight, total: done.length });
   }
-  res.stickers = checkStickers({ runde1: Q.mode.typ === 'leo', test100: Q.mode.typ === 'test' && res.total >= 10 && firstRight === res.total,
+  const got = checkStickers({ unit: S.unit, runde1: Q.mode.typ === 'leo', test100: Q.mode.typ === 'test' && res.total >= 10 && firstRight === res.total,
     serie10: Q.maxStreak >= 10 });
+  res.stickers = got.stickers; res.packs = got.packs;
   save();
   Q = null;
   nav('result', { res });
   sfx.done();
   if (!reduced()) confetti(res.total && firstRight === res.total ? 70 : 40);
   leo([res.total && firstRight === res.total ? 'leo_perfekt' : line.fertig(), { pause: 300 }]);
-  if (res.stickers.length) setTimeout(() => celebrateSticker(res.stickers), 900);
+  if (got.stickers.length || got.packs.length) setTimeout(() => celebrate(got), 900);
   else if (res.mode.typ === 'test' && res.mistakes.length) leo('leo_test_ueben', true);
 }
 function resultHTML(res) {
@@ -754,6 +994,7 @@ function resultHTML(res) {
   const isTest = res.mode.typ === 'test';
   const msg = !res.total ? 'Gut gemacht!' : pct === 1 ? (isTest ? 'Alles richtig – super!' : 'Alles auf Anhieb richtig!') : pct >= 0.8 ? 'Super gemacht!' : pct >= 0.5 ? 'Gut gemacht!' : 'Geschafft! Übung macht den Frosch stark.';
   const again = res.mode.typ === 'leo' ? 'start-leo' : 'mode';
+  const showPack = !!(res.packs && res.packs.length && packsPending(paniniUnit()) > 0);   // Päckchen, die noch zu sind
   return `<div class="screen result">
     <div class="res-top"><img class="res-leo" src="${img('leo_jubel')}" alt="Léo jubelt">
       <div class="res-text"><h1>${msg}</h1>
@@ -761,6 +1002,7 @@ function resultHTML(res) {
         ${isTest ? `<p class="res-note">${res.total ? Math.round(100 * pct) : 0} % – ${pct >= 0.9 ? 'bereit für den Test in der Schule!' : pct >= 0.7 ? 'fast bereit. Übe die Wörter unten nochmals.' : 'übe die Wörter unten mit Léo, dann nochmals testen.'}</p>` : ''}
       </div></div>
     ${res.stickers.length ? `<section class="res-stk"><h2>${res.stickers.length === 1 ? 'Neuer Sticker!' : `${res.stickers.length} neue Sticker!`}</h2>${newStickersHTML(res.stickers)}</section>` : ''}
+    ${showPack ? `<section class="res-stk res-pack"><h2>${res.packs.length === 1 ? 'Neues Päckchen!' : `${res.packs.length} neue Päckchen!`}</h2>${packsGotHTML(res.packs)}</section>` : ''}
     ${res.mistakes.length ? `<section class="mistakes"><h2>Diese Wörter nochmals üben</h2>
       ${res.mistakes.map(m => { const w = WORD[m.id]; return `<div class="mis">${picHTML(w.id, 'mini')}<div><p class="de">${esc(w.de)}</p>
         <p class="fr" lang="fr">${frHTML(w)}</p>${m.answer ? `<p class="yours" lang="fr">Deine Antwort: <s>${show(m.answer)}</s></p>` : ''}</div>
@@ -769,7 +1011,7 @@ function resultHTML(res) {
     <section class="grow">
       <div class="grow-row">${res.grew.slice(0, 12).map(id => `<span class="grow-w">${levelHTML(st(id).box)}<span lang="fr">${show(WORD[id].fr)}</span></span>`).join('')}</div>
       <p>${res.gained > 0 ? `<b>+${res.gained} ${res.gained === 1 ? 'Lernpunkt' : 'Lernpunkte'}.</b> ` : ''}${res.newSafe.length ? `${res.newSafe.length} ${res.newSafe.length === 1 ? 'Wort sitzt' : 'Wörter sitzen'} jetzt sicher. ` : ''}${g} von ${ws.length} Wörtern sicher.</p>
-      <button class="next-stk wide" data-act="album"><span class="next-stk-t">${ICON.sticker}${nextStickerText()}</span><span class="progress small"><i style="width:${nextStickerPct()}%"></i></span></button>
+      ${showPack ? '' : nextStkHTML('wide')}
     </section>
     <div class="res-actions">
       <button class="btn primary big" data-act="${again}" ${again === 'mode' ? `data-mode="${isTest ? 'test' : res.mode.drill}"` : ''}>${ICON.again}<span><b>Nochmal</b></span></button>
@@ -855,9 +1097,9 @@ function flip(i) {
     if (st(a.id).box === 0) { S.w[a.id] = L.record(st(a.id), 'karte', 'first', S.round, Date.now()); save(); }
     setTimeout(() => { sfx.right(Q.found.size); if (c.side !== 'wort') sayWord(a.id); }, 250);
     if (Q.found.size === 6) {
-      const neu = checkStickers({ memory9: Q.moves <= 9 });
+      const got = checkStickers({ unit: S.unit, memory9: Q.moves <= 9 });
       setTimeout(() => { sfx.done(); if (!reduced()) confetti(50); leo('leo_memory_fertig'); }, 900);
-      setTimeout(() => { if (Q && Q.memory) { openSheet('mem-done', memDoneHTML(neu)); if (neu.length) celebrateSticker(neu); } }, 1600);
+      setTimeout(() => { if (Q && Q.memory) { openSheet('mem-done', memDoneHTML(got)); celebrate(got); } }, 1600);
     } else leo([{ pause: 600 }, 'leo_memory_paar'], true);
     return;
   }
@@ -868,38 +1110,79 @@ function flip(i) {
     Q.open = []; Q.locked = false;
   }, 1300);
 }
-const memDoneHTML = neu => `<div class="sheet-head"><h2>Alle Paare gefunden!</h2></div><div class="sheet-body center">
-  ${neu.length ? newStickersHTML(neu) : `<img class="sheet-leo" src="${img('leo_jubel')}" alt="">`}<p class="confirm-text">Du hast ${Q ? Q.moves : ''} Züge gebraucht.</p>
+const memDoneHTML = got => `<div class="sheet-head"><h2>Alle Paare gefunden!</h2></div><div class="sheet-body center">
+  ${got.stickers.length ? newStickersHTML(got.stickers) : got.packs.length ? packsGotHTML(got.packs) : `<img class="sheet-leo" src="${img('leo_jubel')}" alt="">`}<p class="confirm-text">Du hast ${Q ? Q.moves : ''} Züge gebraucht.</p>
   <div class="confirm-actions"><button class="btn" data-act="home">Übersicht</button><button class="btn primary" data-act="mode" data-mode="memory">${ICON.again}<span>Nochmal</span></button></div></div>`;
 
 /* --------------------------------------------------------- Stickeralbum */
+/* Eine Seite je Unité, oben umschalten (albumN = gewählte Seite, sonst die Unité, die man gerade übt) */
+let albumN = null;
+const albumPage = () => (albumN && UNIT[albumN] && UNIT[albumN].aktiv ? albumN : S.unit);
+const PAGE_NAME = n => (isPanini(n) ? 'Coupe du monde' : 'Léo');
 function albumHTML() {
+  const n = albumPage(), page = unitStickers(n), have = new Set(S.stickers);
+  const tabs = ACTIVE.length > 1 ? `<div class="seg album-seg" role="radiogroup" aria-label="Albumseite">${ACTIVE.map(x => {
+    const dot = x.n !== n && (S.neu.some(id => STICKER[id].unit === x.n) || (isPanini(x.n) && packsPending(x.n) > 0));
+    return `<button role="radio" aria-checked="${x.n === n}" data-act="album-page" data-v="${x.n}">${x.titel} · ${PAGE_NAME(x.n)}${dot ? ' <i class="dot"></i>' : ''}</button>`;
+  }).join('')}</div>` : '';
+  return `<div class="screen album ${isPanini(n) ? 'panini' : ''}">
+    <header class="bar"><button class="icon-btn" data-act="home" aria-label="Zurück">${ICON.back}</button><h1 class="bar-title">Stickeralbum</h1><span class="count">${page.filter(s => have.has(s.id)).length}/${page.length}</span></header>
+    ${tabs}${isPanini(n) ? paniniPageHTML(n) : leoPageHTML(n)}
+  </div>`;
+}
+function leoPageHTML(n) {
   const have = new Set(S.stickers), neu = new Set(S.neu);
   const slot = (s, i) => have.has(s.id)
     ? `<button class="slot-stk got ${s.art === 'glitzer' ? 'glitzer' : ''} ${neu.has(s.id) ? 'is-new' : ''}" data-act="sticker" data-id="${s.id}" aria-label="${esc(s.titel)}">
         ${stickerImg(s.id)}<span class="stk-t" lang="fr">${esc(s.titel)}</span>${neu.has(s.id) ? '<em>Neu</em>' : ''}</button>`
     : `<div class="slot-stk empty ${s.art === 'glitzer' ? 'glitzer' : ''}"><span class="stk-n">${s.art === 'glitzer' ? ICON.star : i + 1}</span>
-        <span class="stk-t">${s.art === 'glitzer' ? esc(bedingungText(s)) : '?'}</span></div>`;
-  const normal = D.stickers.filter(s => s.art === 'normal'), glitzer = D.stickers.filter(s => s.art === 'glitzer');
-  const full = have.size === D.stickers.length;
-  return `<div class="screen album">
-    <header class="bar"><button class="icon-btn" data-act="home" aria-label="Zurück">${ICON.back}</button><h1 class="bar-title">Stickeralbum</h1><span class="count">${have.size}/${D.stickers.length}</span></header>
-    <section class="album-top"><img class="album-leo" src="${img(full ? 'leo_jubel' : 'leo_cool')}" alt="Léo">
-      <div><p class="album-intro">Für alle ${L.PER_STICKER} Lernpunkte bekommst du einen neuen Sticker. Jedes Wort bringt bis zu 5 Lernpunkte – je besser du es kannst, desto mehr. Glitzer-Sticker gibt es für besondere Leistungen.</p>
-      <div class="next-stk static"><span class="next-stk-t">${ICON.sticker}${nextStickerText()}</span><span class="progress small"><i style="width:${nextStickerPct()}%"></i></span></div>
-      <p class="album-pts">${allPoints()} Lernpunkte gesammelt</p></div></section>
+        <span class="stk-t">${s.art === 'glitzer' ? esc(bedingungText(s.bedingung)) : '?'}</span></div>`;
+  const normal = unitStickers(n, 'normal'), glitzer = unitStickers(n, 'glitzer');
+  const full = normal.concat(glitzer).every(s => have.has(s.id));
+  return `<section class="album-top"><img class="album-leo" src="${img(full ? 'leo_jubel' : 'leo_cool')}" alt="Léo">
+      <div><p class="album-intro">Für alle ${L.PER_STICKER} Lernpunkte in ${UNIT[n].titel} bekommst du einen neuen Sticker. Jedes Wort bringt bis zu 5 Lernpunkte – je besser du es kannst, desto mehr. Glitzer-Sticker gibt es für besondere Leistungen.</p>
+      ${nextStkHTML('static', n)}
+      <p class="album-pts">${unitPoints(n)} Lernpunkte in ${UNIT[n].titel}</p></div></section>
     <h2 class="album-h">Sticker <span>${normal.filter(s => have.has(s.id)).length} von ${normal.length}</span></h2>
     <section class="album-grid">${normal.map(slot).join('')}</section>
     <h2 class="album-h">Glitzer-Sticker <span>${glitzer.filter(s => have.has(s.id)).length} von ${glitzer.length}</span></h2>
-    <section class="album-grid">${glitzer.map(slot).join('')}</section>
-  </div>`;
+    <section class="album-grid">${glitzer.map(slot).join('')}</section>`;
+}
+/* Panini-Seite: wie ein echtes Album – je Mannschaft ein Feld in ihren Farben, leere Plätze mit Nummer und Aufschrift */
+const RAR_LABEL = { normal: '', glitzer: '★', gold: '★★' };
+function paniniPageHTML(n) {
+  const have = new Set(S.stickers), neu = new Set(S.neu), page = unitStickers(n), got = page.filter(s => have.has(s.id)).length;
+  const dups = pageDups(n), cheapest = Math.min(...page.filter(s => !have.has(s.id)).map(L.tradeCost));
+  const slot = s => have.has(s.id)
+    ? `<button class="pslot got ${s.format} ${neu.has(s.id) ? 'is-new' : ''}" data-act="sticker" data-id="${s.id}" aria-label="${esc(s.titel)}">${cardHTML(s.id)}${neu.has(s.id) ? '<em>Neu</em>' : ''}${S.dup[s.id] ? `<b class="pdup">×${S.dup[s.id] + 1}</b>` : ''}</button>`
+    : `<div class="pslot empty ${s.format} ${s.art}"><span class="pnum">${NUM[s.id]}</span><span class="plabel" lang="fr">${esc(s.kurz)}</span>${RAR_LABEL[s.art] ? `<span class="prar">${RAR_LABEL[s.art]}</span>` : ''}</div>`;
+  const block = (title, sub, list, style, flag) => `<section class="pteam" style="${style}">
+    <header class="pband">${flag}<b lang="fr">${title}</b><span>${sub}</span><i>${list.filter(s => have.has(s.id)).length}/${list.length}</i></header>
+    <div class="pgrid">${list.map(slot).join('')}</div></section>`;
+  const spezial = page.filter(s => !s.team);
+  return `<section class="ptop">
+      <img class="ptop-leo" src="${img(got === page.length ? 'leo_jubel' : 'leo_fussball')}" alt="Léo">
+      <div class="ptop-t"><h2 lang="fr">La Coupe du monde des grenouilles</h2><p class="ptop-sub">Die Frosch-WM · ${UNIT[n].titel} · ${got} von ${page.length} Stickern</p>
+      <p class="album-intro">Alle ${L.PER_PACK} Lernpunkte in ${UNIT[n].titel} gibt es ein Päckchen mit ${L.PACK_SIZE} Stickern – manche sind selten! Doppelte kannst du bei Léo gegen fehlende tauschen. Sind alle Wörter sicher, ist die Seite voll.</p>
+      ${nextStkHTML('static', n)}
+      <div class="ptop-row"><button class="btn ${dups >= cheapest ? 'primary' : ''}" data-act="trade-open" data-unit="${n}" ${got === page.length && !dups ? 'disabled' : ''}>${ICON.swap}<span>Tauschen · ${dups} ${dups === 1 ? 'Doppelter' : 'Doppelte'}</span></button>
+        <span class="plegend"><span class="lg normal">Normal</span><span class="lg glitzer">★ Glitzer: selten</span><span class="lg gold">★★ Gold: super selten</span></span></div></div></section>
+    ${block('Spécial', 'Stadion, Ball, Pokal …', spezial, '--t1:#2D781B;--t2:#FFC83A', '<b class="pc-wm">★</b>')}
+    ${D.teams.map(t => block(t.land, t.de, page.filter(s => s.team === t.id), `--t1:${t.farben[0]};--t2:${t.farben[1] || t.farben[0]}`, flagHTML(t.id))).join('')}`;
 }
 function stickerSheetHTML(id) {
   const s = STICKER[id];
+  if (s.format) {
+    const k = S.dup[id] || 0;
+    return `<div class="sheet-head"><h2 lang="fr">${esc(s.titel)}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
+    <div class="sheet-body center stk-sheet">${cardHTML(id, 'big')}
+      <button class="snd-btn" data-act="say-sticker" data-id="${id}" aria-label="Anhören">${ICON.speaker}</button>
+      <p class="de">${esc(s.de)}</p><p class="set-note">Nr. ${NUM[id]}${s.art === 'gold' ? ' · ★★ Gold: super selten' : s.art === 'glitzer' ? ' · ★ Glitzer: selten' : ''}${k ? ` · ${k}× doppelt` : ''}</p></div>`;
+  }
   return `<div class="sheet-head"><h2 lang="fr">${esc(s.titel)}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
   <div class="sheet-body center stk-sheet">${stickerImg(id, 'big')}
     <button class="snd-btn" data-act="say-sticker" data-id="${id}" aria-label="Anhören">${ICON.speaker}</button>
-    <p class="de">${esc(s.de)}</p>${s.art === 'glitzer' ? `<p class="set-note">Glitzer-Sticker: ${esc(bedingungText(s))}</p>` : ''}</div>`;
+    <p class="de">${esc(s.de)}</p>${s.art === 'glitzer' ? `<p class="set-note">Glitzer-Sticker: ${esc(bedingungText(s.bedingung))}</p>` : ''}</div>`;
 }
 
 /* --------------------------------------------------------- Einstellungen */
@@ -972,6 +1255,7 @@ function confetti(n) {
 /* ---------------------------------------------------------------- Tippen */
 app.addEventListener('click', onClick);
 sheetRoot.addEventListener('click', onClick);
+packRoot.addEventListener('click', onClick);
 sheetRoot.addEventListener('input', e => { if (e.target.id === 'name-in') { S.settings.name = e.target.value.slice(0, 20); save(); } });
 function onClick(e) {
   const b = e.target.closest('[data-act]');
@@ -998,10 +1282,19 @@ function onClick(e) {
     case 'unit': S.unit = +b.dataset.unit; save(); nav('home', {}, false); break;
     case 'teil': S.teil = b.dataset.v; save(); sfx.tap(); render(); break;
     case 'album':
-      sfx.tap(); nav('album');
+      sfx.tap(); albumN = b.dataset.unit ? +b.dataset.unit : S.unit; nav('album');
       if (!S.albumSeen) { S.albumSeen = true; save(); leo('leo_album'); }
       else if (S.stickers.length === D.stickers.length) leo('leo_album_voll');
       break;
+    case 'album-page': sfx.tap(); albumN = +b.dataset.v; render(); window.scrollTo(0, 0); break;
+    case 'open-pack': openPack(+b.dataset.unit || paniniUnit()); break;
+    case 'pack-tear': tearPack(); break;
+    case 'pack-flip': flipCard(+b.dataset.i); break;
+    case 'pack-all': flipAll(); break;
+    case 'pack-close': closePack(); break;
+    case 'pack-album': closePack('album'); break;
+    case 'trade-open': sfx.tap(); openSheet('tausch', tradeHTML(+b.dataset.unit || albumPage())); leo('leo_echange'); break;
+    case 'trade': doTrade(b.dataset.id, b); break;
     case 'sticker': sfx.sparkle(); openSheet('sticker', stickerSheetHTML(b.dataset.id)); Sound.say(b.dataset.id); break;
     case 'say-sticker': Sound.say(b.dataset.id); break;
     case 'settings': sfx.tap(); openSheet('settings', settingsHTML()); break;
@@ -1047,7 +1340,7 @@ function onClick(e) {
     }
     case 'test-sound': sfx.right(3); setTimeout(() => Sound.say(['leo_hallo_02', { pause: 200 }, D.woerter[0].id]), 350); break;
     case 'reset': openSheet('reset', confirmHTML('Alles zurücksetzen?', 'Alle Lernstände und alle Sticker werden gelöscht. Das lässt sich nicht rückgängig machen.', 'Zurücksetzen', 'reset-yes')); break;
-    case 'reset-yes': S.w = {}; S.round = 0; S.tests = []; S.stickers = []; S.neu = []; S.albumSeen = false; save(); closeSheet(true); nav('home', {}, false); break;
+    case 'reset-yes': S.w = {}; S.round = 0; S.tests = []; S.stickers = []; S.neu = []; S.dup = {}; S.pk = {}; S.albumSeen = false; save(); closeSheet(true); nav('home', {}, false); break;
     case 'hint-close': S.hintClosed = true; save(); refreshInstall(); break;
     case 'install': {
       const ev = installEvent;
@@ -1061,6 +1354,12 @@ function onClick(e) {
 document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey) return;
   if (e.target && e.target.tagName === 'INPUT') return;
+  if (PK) {                                                    // Päckchen: Leertaste/Enter = aufreissen bzw. nächsten umdrehen
+    if (e.key === 'Escape') closePack();
+    else if (e.key === ' ' || e.key === 'Enter') { if (!PK.torn) tearPack(); else { const i = PK.got.findIndex((g, k) => !PK.shown.has(k)); if (i >= 0) flipCard(i); } }
+    e.preventDefault();
+    return;
+  }
   if (e.key === 'Escape' && sheetOpen) { closeSheet(); if (view.name === 'home') render(); e.preventDefault(); return; }
   if (sheetOpen) return;
   if (view.name === 'karten') {
