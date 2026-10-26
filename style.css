@@ -625,3 +625,176 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
   .album-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; padding: 10px; }
   .slot-stk { min-height: 128px; }
 }
+
+/* ------------------------------------------------------------ Sammelbuch (2026-10-26, wie beim Rechentiger) */
+:root { --buch-leder: #1F3A78; --buch-leder-tief: #12244F; --buch-akzent: var(--frog-deep); }
+.book-banner {
+  display: flex; align-items: center; gap: 14px; width: 100%; margin: 4px 0 26px; padding: 12px 20px 12px 14px; text-align: left;
+  border-radius: var(--r-lg); color: #F7DE9B; background: linear-gradient(160deg, var(--buch-leder), var(--buch-leder-tief) 75%);
+  box-shadow: 0 5px 0 rgba(0, 0, 0, .35), 0 12px 24px rgba(0, 0, 0, .18), inset 0 0 0 2px rgba(217, 169, 63, .5); transition: transform .12s;
+}
+.book-banner:active { transform: translateY(3px); }
+.book-banner.small { margin: 8px 0 18px; padding: 10px 16px 10px 10px; }
+.bb-book { flex: none; display: grid; place-items: center; width: 58px; height: 58px; border-radius: 14px; background: rgba(243, 213, 138, .14); }
+.bb-book .ic { width: 36px; height: 36px; }
+.bb-text { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.bb-text b { font-size: 24px; color: #F7DE9B; }
+.bb-text small { font-size: 15px; font-weight: 700; color: #EFE3C0; }
+.book-banner > .ic { width: 30px; height: 30px; }
+
+body[data-view="buch"] { overflow: hidden; }
+body[data-view="buch"] .screen.buch {
+  display: flex; flex-direction: column; gap: 6px; height: 100vh; height: 100dvh; padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+.stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; touch-action: none; }
+.book { position: relative; flex: none; width: calc(var(--pw) * 2); height: var(--ph); perspective: calc(var(--pw) * 3.2); transition: transform .8s cubic-bezier(.45, .05, .3, 1); }
+.book.einzel { width: var(--pw); }
+.book.doppel.zu { transform: translateX(calc(var(--pw) * -.5)); }
+.spread { position: relative; display: flex; width: 100%; height: 100%; isolation: isolate; }
+/* der Ledereinband rund um die offenen Seiten */
+.spread::before {
+  content: ''; position: absolute; z-index: -1; inset: -9px -12px; border-radius: 12px;
+  background: var(--buch-leder-tief) url(img/buch_umschlag.webp) center / cover; box-shadow: 0 18px 40px rgba(40, 25, 5, .35); transition: opacity .4s;
+}
+.book.einzel .spread::before { inset: -8px -10px -8px -14px; }
+.book.zu .spread::before { opacity: 0; }
+
+.page {
+  position: relative; flex: none; width: var(--pw); height: var(--ph); overflow: hidden; background-color: #FBF5E6;
+  background-repeat: no-repeat; background-size: 200% 100%; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.page::before {   /* Papierstruktur */
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .28; mix-blend-mode: multiply;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .35 0 0 0 0 .2 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.page.halb-l { background-position: 0 0; }
+.page.halb-r { background-position: 100% 0; }
+.page.links { border-radius: 6px 2px 2px 6px; box-shadow: -2px 1px 0 #EFE6D2, -4px 2px 0 #E2D5BA, -6px 3px 0 #D3C3A3; }
+.page.rechts, .page.solo { border-radius: 2px 6px 6px 2px; box-shadow: 2px 1px 0 #EFE6D2, 4px 2px 0 #E2D5BA, 6px 3px 0 #D3C3A3; }
+.page.leer { visibility: hidden; }
+.page.ziel { outline: 4px solid rgba(46, 158, 91, .75); outline-offset: -4px; }
+.falz { position: absolute; z-index: 3; top: 0; bottom: 0; width: 14%; pointer-events: none; }
+.page.links .falz { right: 0; background: linear-gradient(to left, rgba(60, 40, 10, .3), rgba(60, 40, 10, .08) 35%, transparent); }
+.page.rechts .falz, .page.solo .falz { left: 0; background: linear-gradient(to right, rgba(60, 40, 10, .3), rgba(60, 40, 10, .08) 35%, transparent); }
+.page.rueckseite { background-color: #F4EBD6; }
+
+/* Umschlag: Leder mit Goldprägung, Léo im Medaillon */
+.page.umschlag {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4%; cursor: pointer;
+  background-size: cover; background-position: center; border-radius: 4px 10px 10px 4px;
+  box-shadow: 0 16px 34px rgba(30, 20, 5, .4), inset 5px 0 0 rgba(0, 0, 0, .28), inset 7px 0 0 rgba(255, 255, 255, .06);
+}
+.page.umschlag::before { display: none; }
+.u-titel {
+  display: flex; flex-direction: column; align-items: center; text-align: center; line-height: 1.05; font-weight: 800; color: transparent;
+  background: linear-gradient(180deg, #FFF0B8, #D9A93F 55%, #F7DC8E); -webkit-background-clip: text; background-clip: text;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, .55));
+}
+.u-titel small { font-size: calc(var(--pw) * .07); letter-spacing: .25em; text-transform: uppercase; padding-left: .25em; }
+.u-titel b { font-size: calc(var(--pw) * .084); }
+.u-bild {
+  display: grid; place-items: center; width: 54%; aspect-ratio: 1; border-radius: 50%; overflow: hidden;
+  background: radial-gradient(circle at 50% 40%, #FFF8E4, #EEDCAE);
+  box-shadow: 0 0 0 calc(var(--pw) * .012) #E2B95A, 0 0 0 calc(var(--pw) * .024) #7E5E1E, inset 0 4px 12px rgba(0, 0, 0, .25), 0 8px 18px rgba(0, 0, 0, .45);
+}
+.u-bild img { width: 76%; margin-top: 14%; }
+.u-name { min-height: 1.3em; font-size: calc(var(--pw) * .065); font-weight: 800; color: #F3D58A; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+
+/* »Dieses Buch gehört« und Titelseite */
+.page.exlibris, .page.titel { display: flex; align-items: center; justify-content: center; }
+.exlibris-rahmen {
+  position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: .6em; width: 78%; padding: 9% 6%;
+  text-align: center; border-radius: 14px; background: rgba(255, 251, 238, .75); font-size: calc(var(--pw) * .05);
+  border: calc(var(--pw) * .008) solid #C9A24A; box-shadow: inset 0 0 0 calc(var(--pw) * .014) #FBF5E6, inset 0 0 0 calc(var(--pw) * .019) #C9A24A;
+}
+.exlibris-rahmen img { width: 48%; }
+.ex-klein { font-weight: 700; letter-spacing: .04em; color: var(--ink-soft); }
+.ex-name { max-width: 100%; padding: 0 .4em; font-size: 1.8em; font-weight: 800; line-height: 1.15; color: var(--buch-akzent); border-bottom: 2px dotted #C9A24A; overflow-wrap: anywhere; }
+.ex-deko { display: flex; gap: .6em; color: #C9A24A; }
+.ex-deko .ic { width: 1.2em; height: 1.2em; }
+.titel-inhalt { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; width: 84%; text-align: center; font-size: calc(var(--pw) * .045); }
+.t-klein { font-size: 1.3em; font-weight: 800; letter-spacing: .25em; text-transform: uppercase; color: var(--ink-soft); }
+.t-gross { font-size: 2.1em; font-weight: 800; line-height: 1.05; color: var(--buch-akzent); }
+.titel-inhalt img { width: 46%; margin: .6em 0 .4em; }
+.t-text { line-height: 1.4; font-weight: 700; color: var(--ink-soft); }
+
+/* Szenen */
+.szene-name {
+  position: absolute; z-index: 1; left: 7%; top: 5%; padding: .3em .8em; border-radius: 6px; font-size: calc(var(--pw) * .05); font-weight: 800;
+  background: rgba(255, 252, 240, .88); box-shadow: 0 2px 5px rgba(60, 40, 10, .15); transform: rotate(-2deg);
+}
+.seiten-nr { position: absolute; z-index: 1; bottom: 3%; font-size: calc(var(--pw) * .04); font-weight: 800; color: rgba(60, 40, 10, .55); }
+.page.halb-l .seiten-nr { left: 6%; }
+.page.halb-r .seiten-nr { right: 6%; }
+
+/* Eingeklebte Sticker */
+.pst {
+  position: absolute; z-index: 2; width: 32%; transform: translate(-50%, -50%) rotate(var(--r, 0deg)); cursor: grab; touch-action: none;
+  filter: drop-shadow(0 1px 1.5px rgba(60, 40, 10, .4)); -webkit-user-drag: none;
+}
+.pst.sel { z-index: 4; outline: 3px dashed rgba(255, 255, 255, .95); outline-offset: 2px; border-radius: 16px; filter: drop-shadow(0 0 6px rgba(255, 190, 60, .95)); }
+.pst.klebt { animation: klebt .35s ease-out; }
+@keyframes klebt {
+  from { transform: translate(-50%, -50%) rotate(var(--r, 0deg)) scale(1.12); filter: drop-shadow(0 12px 12px rgba(40, 25, 5, .35)); }
+  to { transform: translate(-50%, -50%) rotate(var(--r, 0deg)) scale(1); }
+}
+.ghost { position: fixed; z-index: 40; pointer-events: none; transform: translate(-50%, -50%) rotate(var(--r, 0deg)) scale(1.08); filter: drop-shadow(0 14px 14px rgba(40, 25, 5, .35)); }
+
+/* Das Blatt, das gerade umgeblättert wird */
+.leaf { position: absolute; z-index: 5; top: 0; width: var(--pw); height: var(--ph); transform-style: preserve-3d; pointer-events: none; }
+.leaf.vor { left: calc(100% - var(--pw)); transform-origin: left center; animation: blattVor .8s cubic-bezier(.45, .05, .3, 1) forwards; }
+.leaf.zurueck { left: 0; transform-origin: right center; animation: blattZurueck .8s cubic-bezier(.45, .05, .3, 1) forwards; }
+.leaf.rein { left: 0; transform-origin: left center; animation: blattRein .8s cubic-bezier(.45, .05, .3, 1) forwards; }
+.face { position: absolute; inset: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+.face * { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
+.face.hinten { transform: rotateY(180deg); }
+.face > .page { position: absolute; inset: 0; }
+.face::after { content: ''; position: absolute; inset: 0; z-index: 9; pointer-events: none; opacity: 0; animation: blattSchatten .8s ease-in-out; }
+.leaf.vor .face.vorne::after, .leaf.rein .face.vorne::after { background: linear-gradient(to left, rgba(40, 25, 5, .35), transparent 70%); }
+.leaf.zurueck .face.vorne::after { background: linear-gradient(to right, rgba(40, 25, 5, .35), transparent 70%); }
+.face.hinten::after { background: linear-gradient(to right, rgba(40, 25, 5, .3), transparent 70%); }
+@keyframes blattVor { from { transform: rotateY(0); } to { transform: rotateY(-180deg); } }
+@keyframes blattZurueck { from { transform: rotateY(0); } to { transform: rotateY(180deg); } }
+@keyframes blattRein { from { transform: rotateY(-180deg); } to { transform: rotateY(0); } }
+@keyframes blattSchatten { 50% { opacity: 1; } }
+/* Einzelseite (Handy): links vom Buch ist kein Platz – die umgeblätterte Seite verschwindet in der zweiten Hälfte */
+.book.einzel .leaf.vor { animation-name: blattWeg; }
+.book.einzel .leaf.rein { animation-name: blattHer; }
+@keyframes blattWeg { 0% { transform: rotateY(0); opacity: 1; } 55% { opacity: 1; } 100% { transform: rotateY(-180deg); opacity: 0; } }
+@keyframes blattHer { 0% { transform: rotateY(-180deg); opacity: 0; } 45% { opacity: 1; } 100% { transform: rotateY(0); opacity: 1; } }
+
+/* Blättern, Stapel, Werkzeug */
+.buch-nav { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.buch-wo { min-width: 0; text-align: center; font-size: 16px; font-weight: 800; color: var(--ink-soft); }
+.buch-nav .icon-btn:disabled { opacity: .35; }
+.tray { flex: none; width: 100%; padding: 8px 10px; border-radius: 22px; background: var(--card); box-shadow: var(--lift-sm); transition: background-color .2s; }
+.tray.ziel { background: var(--berry-soft); }
+.tray-kopf { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; padding: 0 6px 4px; font-size: 15px; }
+.tray-kopf span { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.tray-row { display: flex; gap: 8px; padding: 2px 2px 4px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x; }
+.tray-st { flex: none; display: grid; place-items: center; width: 76px; height: 76px; border-radius: 14px; background: var(--bg); touch-action: pan-x; transition: opacity .2s; }
+.tray-st img { width: 68px; height: 68px; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
+.tray-st.weg { opacity: .3; }
+.tray-leer { margin: 8px; text-align: center; font-size: 15px; font-weight: 700; color: var(--ink-soft); }
+.st-tools { position: fixed; z-index: 35; display: flex; gap: 6px; padding: 6px; border-radius: 18px; background: var(--card); box-shadow: 0 8px 22px rgba(40, 25, 5, .25); }
+.st-tools[hidden] { display: none; }
+.st-tools button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 48px; height: 48px; padding: 0 10px; border-radius: 14px; background: var(--bg); font-size: 15px; font-weight: 800; }
+.st-tools .weg { color: var(--berry); }
+@media (max-height: 700px) {
+  .buch .bar { min-height: 48px; }
+  .buch .icon-btn { width: 44px; height: 44px; }
+  .tray-kopf { display: none; }
+  .tray-st { width: 62px; height: 62px; }
+  .tray-st img { width: 55px; height: 55px; }
+}
+@media (max-width: 560px) {
+  .book-banner { gap: 10px; padding: 10px 14px 10px 10px; }
+  .bb-book { width: 48px; height: 48px; }
+  .bb-book .ic { width: 30px; height: 30px; }
+  .book-banner > .ic { width: 26px; height: 26px; }
+  .bb-text b { font-size: 21px; }
+  .bb-text small { font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .leaf, .face::after, .pst.klebt { animation: none !important; }
+}
