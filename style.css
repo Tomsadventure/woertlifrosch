@@ -738,6 +738,14 @@ body[data-view="buch"] .screen.buch {
   from { transform: translate(-50%, -50%) rotate(var(--r, 0deg)) scale(1.12); }
   to { transform: translate(-50%, -50%) rotate(var(--r, 0deg)) scale(1); }
 }
+/* Glitzer-Sticker funkeln auch im Buch und im Stapel (2026-10-28, wie beim Rechentiger; am Dateinamen erkannt: Léos Glitzer-Sticker heissen g1–g6) */
+.pst[src*="img/g"], .tray-st img[src*="img/g"] { animation: funkeln 2.6s ease-in-out infinite; }
+.pst.klebt[src*="img/g"] { animation: klebt .35s ease-out, funkeln 2.6s ease-in-out .35s infinite; }
+.pst.sel[src*="img/g"] { animation: none; }
+@keyframes funkeln {
+  0%, 100% { filter: drop-shadow(0 1px 1.5px rgba(60, 40, 10, .4)); }
+  50% { filter: drop-shadow(0 0 6px rgba(255, 214, 90, .95)) brightness(1.1) saturate(1.2); }
+}
 /* der Sticker unter dem Finger: bewegt mit transform (app.js → ziehBewegen), das ist auf iPhone/iPad flüssig */
 .ghost { position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none; will-change: transform; filter: drop-shadow(0 14px 14px rgba(40, 25, 5, .35)); }
 
