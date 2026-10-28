@@ -1,5 +1,5 @@
 /* Offline: hält alle Dateien eines App-Stands auf dem Gerät. VERSION und FILES setzt Scripts/bauen.py ein. */
-const VERSION = '2026-10-28-c2b7b75';
+const VERSION = '2026-10-28-5e9b346';
 const FILES = [
   './',
   'app.js',
@@ -510,8 +510,10 @@ const FILES = [
   'img/seite_berge.webp',
   'img/seite_buehne.webp',
   'img/seite_burg.webp',
+  'img/seite_garten.webp',
   'img/seite_gipfel.webp',
   'img/seite_haus.webp',
+  'img/seite_herbst.webp',
   'img/seite_insel.webp',
   'img/seite_meer.webp',
   'img/seite_nacht.webp',
@@ -519,6 +521,7 @@ const FILES = [
   'img/seite_see.webp',
   'img/seite_teich.webp',
   'img/seite_unterwasser.webp',
+  'img/seite_wanderweg.webp',
   'img/seite_weihnachten.webp',
   'img/seite_winter.webp',
   'img/st01.webp',
