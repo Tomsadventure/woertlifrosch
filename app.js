@@ -25,12 +25,13 @@ const UNIT = Object.fromEntries(UNITS.map(u => [u.n, u]));
 const ACTIVE = UNITS.filter(u => u.aktiv);
 const TEAM = Object.fromEntries((D.teams || []).map(t => [t.id, t]));
 const TEILE = [['grund', 'Vocabulaire'], ['plus', 'Vocabulaire plus'], ['beide', 'Beides']];
-/* Sammelbuch: Seite 0 = Umschlag, 1 = »Dieses Buch gehört«, 2 = Titelseite, 3–28 = 13 gemalte Doppelseiten (7 neue am Schluss seit 2026-10-28,
+/* Sammelbuch: Seite 0 = Umschlag, 1 = »Dieses Buch gehört«, 2 = Titelseite, 3–30 = 14 gemalte Doppelseiten (neue kommen immer ans Ende,
    damit eingeklebte Sticker auf ihren Seiten bleiben).
    Hinein kommen nur Léo-Sticker (Album »leo«), keine Panini-Karten (Wunsch des Benutzers 2026-10-26). */
 const SZENEN = [['teich', 'Am Seerosenteich'], ['meer', 'Am Meer'], ['berge', 'In den Bergen'], ['unterwasser', 'Unter Wasser'],
   ['winter', 'Im Winter'], ['nacht', 'In der Nacht'], ['burg', 'In der Burg'], ['gipfel', 'Auf dem Gipfel'],
-  ['haus', 'Zu Hause'], ['see', 'Am See'], ['insel', 'Auf der Insel'], ['regen', 'Im Regen'], ['buehne', 'Auf der Bühne']];
+  ['haus', 'Zu Hause'], ['see', 'Am See'], ['insel', 'Auf der Insel'], ['regen', 'Im Regen'], ['buehne', 'Auf der Bühne'],
+  ['weihnachten', 'An Weihnachten']];
 const BUCH_SEITEN = 3 + 2 * SZENEN.length;
 const buchSticker = id => !!STICKER[id] && !!UNIT[STICKER[id].unit] && UNIT[STICKER[id].unit].album !== 'panini';
 
