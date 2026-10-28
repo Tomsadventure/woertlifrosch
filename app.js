@@ -25,10 +25,12 @@ const UNIT = Object.fromEntries(UNITS.map(u => [u.n, u]));
 const ACTIVE = UNITS.filter(u => u.aktiv);
 const TEAM = Object.fromEntries((D.teams || []).map(t => [t.id, t]));
 const TEILE = [['grund', 'Vocabulaire'], ['plus', 'Vocabulaire plus'], ['beide', 'Beides']];
-/* Sammelbuch: Seite 0 = Umschlag, 1 = »Dieses Buch gehört«, 2 = Titelseite, 3–14 = sechs gemalte Doppelseiten.
+/* Sammelbuch: Seite 0 = Umschlag, 1 = »Dieses Buch gehört«, 2 = Titelseite, 3–28 = 13 gemalte Doppelseiten (7 neue am Schluss seit 2026-10-28,
+   damit eingeklebte Sticker auf ihren Seiten bleiben).
    Hinein kommen nur Léo-Sticker (Album »leo«), keine Panini-Karten (Wunsch des Benutzers 2026-10-26). */
 const SZENEN = [['teich', 'Am Seerosenteich'], ['meer', 'Am Meer'], ['berge', 'In den Bergen'], ['unterwasser', 'Unter Wasser'],
-  ['winter', 'Im Winter'], ['nacht', 'In der Nacht']];
+  ['winter', 'Im Winter'], ['nacht', 'In der Nacht'], ['burg', 'In der Burg'], ['gipfel', 'Auf dem Gipfel'],
+  ['haus', 'Zu Hause'], ['see', 'Am See'], ['insel', 'Auf der Insel'], ['regen', 'Im Regen'], ['buehne', 'Auf der Bühne']];
 const BUCH_SEITEN = 3 + 2 * SZENEN.length;
 const buchSticker = id => !!STICKER[id] && !!UNIT[STICKER[id].unit] && UNIT[STICKER[id].unit].album !== 'panini';
 
@@ -1249,9 +1251,13 @@ function stickerSheetHTML(id) {
 /* ----------------------------------------------------------- Sammelbuch
    Wie beim Rechentiger und Wörtli-Panda (2026-10-26): ein Buch zum freien Einkleben der Léo-Sticker (ohne Panini-Karten) – aus dem Stapel unten auf eine Seite
    ziehen (oder antippen), verschieben, drehen (Knöpfe oder zwei Finger), wieder ablösen. Blättern mit den Pfeilen, Wischen
-   oder den Pfeiltasten. Breiter Bildschirm: Doppelseite, sonst eine Seite. Jeder Sticker lässt sich genau einmal einkleben. */
-const BK = { busy: false, pend: null, drag: null, swipe: null, sel: null, L: null, from: 'home' };
+   oder den Pfeiltasten. Breiter Bildschirm: Doppelseite, sonst eine Seite. Jeder Sticker lässt sich genau einmal einkleben.
+   Überarbeitet 2026-10-28 nach einem Video vom iPad (in allen drei Apps gleich): Blättern ohne Flackern (blaettern), Sticker
+   ohne Aufblitzen (einkleben), Ziehen mit dem Finger auf iPhone/iPad (»Ziehen«). */
+const BK = { busy: false, pend: null, drag: null, swipe: null, roll: null, rollRaf: 0, sel: null, L: null, from: 'home', nr: 0, schluck: false };
 const STICKER_BREITE = 0.32;                  // Anteil der Seitenbreite (gleich wie .pst in style.css)
+const stickerBild = s => img(s);
+const stickerName = s => STICKER[s].de;
 const eingeklebt = () => S.buch.placed.filter(x => S.stickers.includes(x.s));
 const buchAlle = () => S.stickers.filter(buchSticker);                                    // nur Léo-Sticker, keine Panini-Karten
 const freieSticker = () => buchAlle().filter(s => !S.buch.placed.some(x => x.s === s)).reverse();      // der neuste zuerst
@@ -1268,6 +1274,8 @@ function seiteInfo(p) {
 const blattVon = p => (p === 0 ? 0 : Math.ceil(p / 2));
 const seitenVon = s => (s === 0 ? [null, 0] : [2 * s - 1, 2 * s]);
 const LETZTES_BLATT = blattVon(BUCH_SEITEN - 1);
+const knoten = html => { const d = document.createElement('div'); d.innerHTML = html; return d.firstElementChild; };   // lädt die Bilder schon
+const pstEl = s => document.querySelector(`#book .spread .pst[data-s="${CSS.escape(s)}"]`);
 
 function buchHTML() {
   return `<div class="screen buch" id="buch">
@@ -1300,7 +1308,8 @@ function oeffneBuch() {
 function buchZeigen() { zeichneStapel(); zeichneBuch(); }          // zuerst der Stapel: seine Höhe bestimmt die Buchgrösse
 function buchAufraeumen() {
   if (BK.drag) BK.drag.g.remove();
-  Object.assign(BK, { drag: null, pend: null, swipe: null, sel: null, busy: false });
+  stoppeRollen();
+  Object.assign(BK, { drag: null, pend: null, swipe: null, roll: null, sel: null, busy: false, nr: BK.nr + 1 });
 }
 /* Wie gross wird eine Seite? Seiten sind 3 : 4 (hoch). Doppelseite, wenn genug Breite da ist (iPad quer, PC). */
 function buchMasse() {
@@ -1309,6 +1318,8 @@ function buchMasse() {
   const pw = Math.floor(Math.max(120, doppel ? Math.min(W / 2 - 16, H * 0.75) : Math.min(W - 20, H * 0.75)));
   return { doppel, pw, ph: Math.round(pw / 0.75) };
 }
+const masseNeu = () => { const L = buchMasse(); return !BK.L || L.pw !== BK.L.pw || L.doppel !== BK.L.doppel; };
+/* Das ganze Buch neu – nur beim Öffnen, bei einer neuen Bildschirmgrösse und ohne Animationen; sonst wird nur verschoben */
 function zeichneBuch() {
   const book = document.getElementById('book');
   if (!book) return;
@@ -1318,13 +1329,18 @@ function zeichneBuch() {
   book.style.setProperty('--pw', `${L.pw}px`);
   book.style.setProperty('--ph', `${L.ph}px`);
   book.innerHTML = `<div class="spread">${L.doppel ? seiteHTML(l, 'links') : ''}${seiteHTML(r, L.doppel ? 'rechts' : 'solo')}</div>`;
+  buchLeiste();
+}
+/* Pfeile, »Seite … · …«, Zähler oben rechts und Werkzeug – passend zur aufgeschlagenen Seite */
+function buchLeiste() {
+  const L = BK.L, s = blattVon(S.buch.p);
   document.getElementById('blatt-vor').disabled = L.doppel ? s >= LETZTES_BLATT : S.buch.p >= BUCH_SEITEN - 1;
   document.getElementById('blatt-zurueck').disabled = S.buch.p === 0;
   document.getElementById('buch-wo').textContent = woText(L.doppel, s);
   const n = eingeklebt().length, c = document.getElementById('buch-count');
   c.textContent = `${n}/${buchAlle().length}`;
   c.setAttribute('aria-label', `${n} von ${buchAlle().length} Stickern eingeklebt`);
-  if (BK.sel != null && !document.querySelector(`#book .pst[data-k="${BK.sel}"]`)) BK.sel = null;
+  if (BK.sel != null && !pstEl(BK.sel)) BK.sel = null;
   zeigeWerkzeug();
 }
 function woText(doppel, s) {
@@ -1334,8 +1350,9 @@ function woText(doppel, s) {
   const a = seiteInfo(doppel ? 2 * s - 1 : p);
   return doppel ? `Seite ${a.nr}–${a.nr + 1} · ${SZENEN[a.szene][1]}` : `Seite ${a.nr} von ${2 * SZENEN.length} · ${SZENEN[a.szene][1]}`;
 }
-/* Eine Seite. live = mit antippbaren Stickern (nicht auf dem Blatt, das gerade umgeblättert wird) */
-function seiteHTML(p, seite, live = true) {
+const pstHTML = x => `<img class="pst${BK.sel === x.s ? ' sel' : ''}" data-act="pst" data-s="${x.s}" src="${stickerBild(x.s)}" alt="${esc(stickerName(x.s))}" draggable="false" style="left:${x.x}%;top:${x.y}%;--r:${x.r}deg">`;
+/* Eine Seite mit ihren Stickern (zuletzt geklebt = zuoberst) */
+function seiteHTML(p, seite) {
   if (p == null) return `<div class="page ${seite} leer"></div>`;
   const a = seiteInfo(p);
   if (a.art === 'umschlag') {
@@ -1357,22 +1374,46 @@ function seiteHTML(p, seite, live = true) {
     cls += a.links ? ' halb-l' : ' halb-r';
     inhalt = `${a.links ? `<span class="szene-name">${SZENEN[a.szene][1]}</span>` : ''}<span class="seiten-nr">${a.nr}</span>`;
   }
-  const st = S.buch.placed.map((x, k) => [x, k]).filter(([x]) => x.p === p && S.stickers.includes(x.s));
-  return `<div class="page ${seite} ${cls}" data-p="${p}"${stil}>${inhalt}${st.map(([x, k]) =>
-    `<img class="pst${live && BK.sel === k ? ' sel' : ''}"${live ? ` data-act="pst" data-k="${k}"` : ''} src="${img(x.s)}" alt="${esc(STICKER[x.s].de)}" draggable="false" style="left:${x.x}%;top:${x.y}%;--r:${x.r}deg">`).join('')}<i class="falz" aria-hidden="true"></i></div>`;
+  const st = S.buch.placed.filter(x => x.p === p && S.stickers.includes(x.s));
+  return `<div class="page ${seite} ${cls}" data-p="${p}"${stil}>${inhalt}${st.map(pstHTML).join('')}<i class="falz" aria-hidden="true"></i></div>`;
 }
+const stapelKnopfHTML = s => `<button class="tray-st" data-act="tray-st" data-s="${s}" aria-label="${esc(stickerName(s))} einkleben"><img src="${stickerBild(s)}" alt="" draggable="false"></button>`;
 function zeichneStapel() {
   const t = document.getElementById('tray');
   if (!t) return;
   const frei = freieSticker();
   t.innerHTML = frei.length
-    ? `<div class="tray-kopf"><b>Deine Sticker (${frei.length})</b><span>Auf eine Seite ziehen oder antippen</span></div>
-      <div class="tray-row">${frei.map(s => `<button class="tray-st" data-act="tray-st" data-s="${s}" aria-label="${esc(STICKER[s].de)} einkleben"><img src="${img(s)}" alt="" draggable="false"></button>`).join('')}</div>`
+    ? `<div class="tray-kopf"><b>Deine Sticker (${frei.length})</b><span>Nach oben auf eine Seite ziehen oder antippen</span></div>
+      <div class="tray-row">${frei.map(stapelKnopfHTML).join('')}</div>`
     : `<p class="tray-leer">${buchAlle().length ? 'Alle deine Sticker sind eingeklebt. Neue bekommst du, wenn du Wörter lernst.' : 'Noch keine Léo-Sticker. Übe mit Léo – dann bekommst du den ersten! (Die Fussball-Sticker bleiben im Album.)'}</p>`;
 }
+/* Stapel ohne ihn neu zu zeichnen: einen Sticker herausnehmen / zurücklegen (bild = sein <img>, wird wiederverwendet) */
+function stapelWeg(s) {
+  const b = document.querySelector(`#tray .tray-st[data-s="${CSS.escape(s)}"]`), n = freieSticker().length;
+  if (b) b.remove();
+  if (!n || !b) { zeichneStapel(); if (masseNeu()) zeichneBuch(); return; }
+  document.querySelector('#tray .tray-kopf b').textContent = `Deine Sticker (${n})`;
+}
+function stapelDazu(s, bild) {
+  const row = document.querySelector('#tray .tray-row'), frei = freieSticker();
+  if (!row) { zeichneStapel(); if (masseNeu()) zeichneBuch(); return; }
+  const b = knoten(stapelKnopfHTML(s)), i = frei.indexOf(s), nach = frei.slice(i + 1).map(x => row.querySelector(`.tray-st[data-s="${CSS.escape(x)}"]`)).find(Boolean);
+  if (bild) {
+    ['class', 'style', 'data-act', 'data-s'].forEach(a => bild.removeAttribute(a));
+    bild.alt = '';
+    b.firstElementChild.replaceWith(bild);
+  }
+  row.insertBefore(b, nach || null);
+  document.querySelector('#tray .tray-kopf b').textContent = `Deine Sticker (${frei.length})`;
+}
 
-/* ---- Blättern: das umgeblätterte Blatt dreht sich in 3D um den Buchrücken, darunter liegen schon die neuen Seiten ---- */
-function blaettern(d) {
+/* ---- Blättern (neu 2026-10-28): das Blatt hebt sich vom Buchrücken, steht senkrecht und legt sich auf die andere Seite.
+   Das sind zwei flache Hälften nacheinander (.halb.hoch, dann .halb.runter) statt einer 3D-Karte mit Vorder- und Rückseite:
+   bei der Karte liess Safari auf dem iPad die Rückseite gespiegelt durchscheinen und zeigte am Ende kurz die alte Seite.
+   Nichts wird neu gezeichnet: die aufgeschlagene Seite wird zum Blatt, das Blatt am Ende wieder zur Seite. Neue Seiten werden
+   vorher fertig geladen (decode), damit kein Bild und kein Sticker nachträglich aufblitzt. danach = was nach dem Blättern kommt. */
+const BLATT_MS = 700;                          // beide Hälften zusammen (style.css: je .35s)
+function blaettern(d, danach) {
   if (BK.busy || BK.drag || !BK.L) return;
   const L = BK.L, p0 = S.buch.p;
   let p1;
@@ -1385,54 +1426,95 @@ function blaettern(d) {
     if (p1 < 0 || p1 >= BUCH_SEITEN) return;
   }
   waehle(null);
-  Sound.fx('blaettern');
   S.buch.p = p1;
   save();
-  if (reduced()) { zeichneBuch(); return; }
+  if (reduced()) { Sound.fx('blaettern'); zeichneBuch(); if (danach) danach(); return; }
   BK.busy = true;
-  const book = document.getElementById('book'), spread = book.querySelector('.spread');
-  let unten, blatt;
+  const nr = ++BK.nr, book = document.getElementById('book'), spread = book.querySelector('.spread');
+  book.classList.add('blaettert');
+  // hoch = aufgeschlagene Seite, die sich hebt; unten = neue Seite darunter; runter = Seite, die sich hinlegt und am Ende ersetzt
+  let hoch = null, unten = null, runter = null, ersetzt = null, art;
   if (L.doppel) {
-    const [l0, r0] = seitenVon(blattVon(p0)), [l1, r1] = seitenVon(blattVon(p1));
-    if (d > 0) { unten = seiteHTML(l0, 'links', false) + seiteHTML(r1, 'rechts', false); blatt = ['vor', seiteHTML(r0, 'rechts', false), seiteHTML(l1, 'links', false)]; }
-    else { unten = seiteHTML(l1, 'links', false) + seiteHTML(r0, 'rechts', false); blatt = ['zurueck', seiteHTML(l0, 'links', false), seiteHTML(r1, 'rechts', false)]; }
-    book.classList.toggle('zu', blattVon(p1) === 0);              // zuklappen / aufklappen: das Buch rutscht in die Mitte
-  } else if (d > 0) {
-    unten = seiteHTML(p1, 'solo', false); blatt = ['vor', seiteHTML(p0, 'solo', false), '<div class="page solo rueckseite"></div>'];
-  } else {
-    unten = seiteHTML(p0, 'solo', false); blatt = ['rein', seiteHTML(p1, 'solo', false), '<div class="page solo rueckseite"></div>'];
-  }
-  spread.innerHTML = unten;
-  book.insertAdjacentHTML('beforeend', `<div class="leaf ${blatt[0]}"><div class="face vorne">${blatt[1]}</div><div class="face hinten">${blatt[2]}</div></div>`);
-  document.getElementById('buch-wo').textContent = woText(L.doppel, blattVon(p1));
-  setTimeout(() => { BK.busy = false; if (view.name === 'buch') zeichneBuch(); }, 820);
+    const [l1, r1] = seitenVon(blattVon(p1)), [links, rechts] = spread.children;
+    if (d > 0) { art = 'vor'; hoch = rechts; unten = knoten(seiteHTML(r1, 'rechts')); runter = knoten(seiteHTML(l1, 'links')); ersetzt = links; }
+    else { art = 'zurueck'; hoch = links; unten = knoten(seiteHTML(l1, 'links')); runter = knoten(seiteHTML(r1, 'rechts')); ersetzt = rechts; }
+  } else if (d > 0) { art = 'weg'; hoch = spread.firstElementChild; unten = knoten(seiteHTML(p1, 'solo')); }
+  else { art = 'her'; runter = knoten(seiteHTML(p1, 'solo')); ersetzt = spread.firstElementChild; }
+  bilderBereit([unten, runter]).then(() => {
+    if (nr !== BK.nr || !book.isConnected) return;
+    Sound.fx('blaettern');
+    const leaf = document.createElement('div');
+    leaf.className = `leaf ${art}`;
+    if (hoch) { hoch.replaceWith(unten); leaf.appendChild(document.createElement('div')).className = 'halb hoch'; leaf.lastChild.appendChild(hoch); }
+    if (runter) { leaf.appendChild(document.createElement('div')).className = 'halb runter'; leaf.lastChild.appendChild(runter); }
+    book.appendChild(leaf);
+    if (L.doppel) book.classList.toggle('zu', blattVon(p1) === 0);              // zuklappen / aufklappen: das Buch rutscht in die Mitte
+    document.getElementById('buch-wo').textContent = woText(L.doppel, blattVon(p1));
+    let fertig = false;
+    const ende = () => {
+      if (fertig || nr !== BK.nr) return;
+      fertig = true;
+      if (runter) ersetzt.replaceWith(runter);
+      leaf.remove();
+      book.classList.remove('blaettert');
+      BK.busy = false;
+      buchLeiste();
+      if (danach && view.name === 'buch') danach();
+    };
+    const letzte = leaf.lastChild;
+    leaf.addEventListener('animationend', e => { if (e.target === letzte && e.animationName.startsWith('halb')) ende(); });
+    setTimeout(ende, BLATT_MS + 250);                                          // falls kein animationend kommt
+  });
+}
+/* Wartet, bis die Bilder der Seiten entpackt sind (höchstens ms), damit sie beim Blättern gleich ganz da sind */
+function bilderBereit(seiten, ms = 400) {
+  const warte = i => (i.decode ? i.decode().catch(() => {}) : Promise.resolve());
+  const jobs = [];
+  seiten.filter(Boolean).forEach(e => {
+    e.querySelectorAll('img').forEach(i => jobs.push(warte(i)));
+    const bg = /url\(["']?([^"')]+)/.exec(e.style.backgroundImage || '');
+    if (bg) { const i = new Image(); i.src = bg[1]; jobs.push(warte(i)); }
+  });
+  return Promise.race([Promise.all(jobs), new Promise(res => setTimeout(res, ms))]);
 }
 
-/* ---- Einkleben, auswählen, drehen, ablösen ---- */
-function einkleben(s, p, x, y, r, k) {        // k = schon eingeklebt (verschoben)
-  const item = k != null ? S.buch.placed.splice(k, 1)[0] : { s };
+/* ---- Einkleben, auswählen, drehen, ablösen. Seit 2026-10-28 ohne das Buch neu zu zeichnen (sonst blitzten auf dem iPad alle
+   Sticker kurz auf): das Bild, das man gezogen oder angetippt hat, wird selbst zum eingeklebten Sticker. ---- */
+function einkleben(s, p, x, y, r, bild) {
+  const alt = S.buch.placed.findIndex(i => i.s === s), neu = alt < 0;
+  const item = neu ? { s } : S.buch.placed.splice(alt, 1)[0];
   Object.assign(item, { p, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, r: Math.round(r) });
   S.buch.placed.push(item);                    // zuletzt geklebt = zuoberst
   save();
   Sound.fx('kleben');
   BK.sel = null;
-  buchZeigen();
-  const el = document.querySelector(`#book .pst[data-k="${S.buch.placed.length - 1}"]`);
-  if (el && !reduced()) el.classList.add('klebt');
-  if (k == null && eingeklebt().length === 1) leo('leo_buch_klebt');        // beim allerersten Sticker
+  const e = pstEl(s) || (bild && bild.tagName === 'IMG' ? bild : knoten(pstHTML(item)));
+  e.className = 'pst';
+  e.style.cssText = `left:${item.x}%;top:${item.y}%;--r:${item.r}deg`;
+  Object.assign(e.dataset, { act: 'pst', s });
+  e.alt = stickerName(s);
+  e.draggable = false;
+  const seite = document.querySelector(`#book .spread .page[data-p="${p}"]`);
+  if (seite) seite.insertBefore(e, seite.querySelector('.falz'));
+  if (neu) stapelWeg(s);
+  if (!reduced()) { void e.offsetWidth; e.classList.add('klebt'); }
+  buchLeiste();
+  if (neu && eingeklebt().length === 1) leo('leo_buch_klebt');        // beim allerersten Sticker
 }
 /* Antippen im Stapel: auf die sichtbare Seite mit weniger Stickern, ungefähr in die Mitte */
 function antippenEinkleben(s) {
+  if (BK.schluck) { BK.schluck = false; return; }           // das »click« am Ende von Ziehen/Scrollen (Maus) zählt nicht
   if (BK.busy || BK.drag) return;
-  if (S.buch.p === 0) { blaettern(1); setTimeout(() => { if (view.name === 'buch') antippenEinkleben(s); }, 850); return; }
+  if (S.buch.p === 0) { blaettern(1, () => antippenEinkleben(s)); return; }
   const ziel = [...document.querySelectorAll('#book .spread .page[data-p]')].map(e => +e.dataset.p).filter(p => p > 0)
     .map(p => ({ p, n: S.buch.placed.filter(x => x.p === p).length })).sort((a, b) => a.n - b.n || b.p - a.p)[0];
-  if (ziel) einkleben(s, ziel.p, 30 + Math.random() * 40, 30 + Math.random() * 40, Math.random() * 20 - 10, null);
+  const b = document.querySelector(`#tray .tray-st[data-s="${CSS.escape(s)}"] img`);
+  if (ziel) einkleben(s, ziel.p, 30 + Math.random() * 40, 30 + Math.random() * 40, Math.random() * 20 - 10, b);
 }
-function waehle(k) {
-  BK.sel = k;
+function waehle(s) {
+  BK.sel = s;
   document.querySelectorAll('#book .pst.sel').forEach(e => e.classList.remove('sel'));
-  const el = k != null && document.querySelector(`#book .pst[data-k="${k}"]`);
+  const el = s != null && pstEl(s);
   if (el) el.classList.add('sel'); else BK.sel = null;
   zeigeWerkzeug();
 }
@@ -1440,7 +1522,7 @@ function waehle(k) {
 function zeigeWerkzeug() {
   const t = document.getElementById('st-tools');
   if (!t) return;
-  const el = BK.sel != null && document.querySelector(`#book .pst[data-k="${BK.sel}"]`);
+  const el = BK.sel != null && pstEl(BK.sel);
   t.hidden = !el;
   if (!el) return;
   const r = el.getBoundingClientRect(), vw = document.documentElement.clientWidth;
@@ -1450,35 +1532,47 @@ function zeigeWerkzeug() {
   t.style.top = `${top}px`;
 }
 function drehen(d) {
-  const x = S.buch.placed[BK.sel];
+  const x = S.buch.placed.find(i => i.s === BK.sel);
   if (!x) return;
   x.r = ((x.r + d + 540) % 360) - 180;
   save();
   sfx.tap();
-  const el = document.querySelector(`#book .pst[data-k="${BK.sel}"]`);
+  const el = pstEl(BK.sel);
   if (el) el.style.setProperty('--r', `${x.r}deg`);
   zeigeWerkzeug();
 }
-function abloesen(k, leise) {
-  if (!S.buch.placed[k]) return;
+function abloesen(s, leise) {
+  const k = S.buch.placed.findIndex(i => i.s === s);
+  if (k < 0) return;
   S.buch.placed.splice(k, 1);
   save();
   if (leise) sfx.tap(); else Sound.fx('abloesen');
   BK.sel = null;
-  buchZeigen();
+  const e = pstEl(s);
+  stapelDazu(s, e);
+  if (e && e.closest('#book')) e.remove();
+  buchLeiste();
 }
 
-/* ---- Ziehen: mit einem Finger (oder der Maus) verschieben, ein zweiter Finger dreht ---- */
+/* ---- Ziehen: mit einem Finger (oder der Maus) verschieben, ein zweiter Finger dreht.
+   iPhone/iPad (2026-10-28): Safari nahm das Ziehen aus dem Stapel als Scrollen und brach es ab (pointercancel). Darum
+   scrollt der Stapel jetzt selbst (touch-action: none in style.css): seitwärts wischen = Stapel scrollen, nach oben ziehen =
+   Sticker nehmen. Solange etwas gezogen wird, verhindert touchmove zusätzlich jedes Scrollen der Seite. ---- */
 const punkt = e => ({ x: e.clientX, y: e.clientY });
 app.addEventListener('pointerdown', e => {
-  if (view.name !== 'buch' || BK.busy) return;
+  if (view.name !== 'buch') return;
+  BK.schluck = false;
+  if (BK.busy) return;
   if (BK.drag) {                                // zweiter Finger: ab jetzt wird gedreht
     if (e.pointerType === 'touch' && BK.drag.ptr.size === 1) { BK.drag.ptr.set(e.pointerId, punkt(e)); BK.drag.w0 = null; }
     return;
   }
-  const tray = e.target.closest('.tray-st'), pst = e.target.closest('#book .pst');
-  if (tray) BK.pend = { art: 'neu', s: tray.dataset.s, el: tray, id: e.pointerId, ...punkt(e) };
-  else if (pst) { BK.pend = { art: 'zug', k: +pst.dataset.k, el: pst, id: e.pointerId, ...punkt(e) }; e.preventDefault(); }
+  if (BK.roll) return;
+  stoppeRollen();
+  const tray = e.target.closest('.tray-st'), pst = e.target.closest('#book .spread .pst'), row = e.target.closest('.tray-row');
+  if (tray) BK.pend = { art: 'neu', s: tray.dataset.s, el: tray, row, id: e.pointerId, ...punkt(e) };
+  else if (pst) { BK.pend = { art: 'zug', s: pst.dataset.s, el: pst, id: e.pointerId, ...punkt(e) }; e.preventDefault(); }
+  else if (row) rollStart({ row, id: e.pointerId, ...punkt(e) });
   else if (e.target.closest('#book')) BK.swipe = { id: e.pointerId, ...punkt(e) };
   if (!e.target.closest('.st-tools, #book .pst')) waehle(null);
 });
@@ -1487,17 +1581,45 @@ window.addEventListener('pointermove', e => {
   const pd = BK.pend;
   if (pd && e.pointerId === pd.id) {
     const dx = e.clientX - pd.x, dy = e.clientY - pd.y;
-    if (pd.art === 'neu') {
-      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) ziehStart(pd, e);
-      else if (Math.abs(dx) > 14) BK.pend = null;          // der Stapel wird seitwärts gescrollt
+    if (pd.art === 'neu') {             // schräg nach oben (auch flach, zum Buch auf dem breiten iPad): den Sticker nehmen
+      const weit = Math.hypot(dx, dy), scrollt = pd.row && pd.row.scrollWidth > pd.row.clientWidth + 2;
+      if (weit > 8 && (!scrollt || -dy >= Math.abs(dx) * 0.35 || (weit > 24 && dy < 0))) ziehStart(pd, e);
+      else if ((Math.abs(dx) > 10 && Math.abs(dy) < Math.abs(dx) * 0.35) || weit > 24) { BK.pend = null; rollStart(pd); }   // seitwärts: Stapel scrollen
     } else if (Math.hypot(dx, dy) > 6) ziehStart(pd, e);
   }
+  if (BK.roll && e.pointerId === BK.roll.id) rollen(e);
   const dr = BK.drag;
   if (dr && dr.ptr.has(e.pointerId)) { dr.ptr.set(e.pointerId, punkt(e)); ziehBewegen(); }
 }, { passive: true });
+// Safari (iPhone/iPad): solange im Buch etwas gezogen, gewischt oder gescrollt wird, nicht die Seite verschieben
+document.addEventListener('touchmove', e => {
+  if (view.name === 'buch' && (BK.pend || BK.drag || BK.roll || BK.swipe) && e.cancelable) e.preventDefault();
+}, { passive: false });
+/* Den Stapel mit dem Finger scrollen, mit etwas Schwung beim Loslassen */
+function rollStart(pd) { BK.roll = { id: pd.id, row: pd.row, x: pd.x, left: pd.row.scrollLeft, lx: pd.x, t: performance.now(), v: 0 }; }
+function rollen(e) {
+  const ro = BK.roll, t = performance.now(), dt = t - ro.t;
+  if (dt > 0) ro.v = 0.7 * ((ro.lx - e.clientX) / dt) + 0.3 * ro.v;       // Pixel pro Millisekunde
+  ro.t = t; ro.lx = e.clientX;
+  ro.row.scrollLeft = ro.left - (e.clientX - ro.x);
+}
+function rollEnde() {
+  const ro = BK.roll;
+  BK.roll = null;
+  BK.schluck = true;
+  let v = performance.now() - ro.t > 90 ? 0 : ro.v, t0 = performance.now();
+  const schritt = t => {
+    const dt = t - t0; t0 = t;
+    ro.row.scrollLeft += v * dt;
+    v *= Math.pow(0.995, dt);
+    BK.rollRaf = Math.abs(v) > 0.02 && ro.row.isConnected ? requestAnimationFrame(schritt) : 0;
+  };
+  if (Math.abs(v) > 0.05) BK.rollRaf = requestAnimationFrame(schritt);
+}
+function stoppeRollen() { if (BK.rollRaf) cancelAnimationFrame(BK.rollRaf); BK.rollRaf = 0; }
 function ziehStart(pd, e) {
   BK.pend = null;
-  const zug = pd.art === 'zug', x = zug && S.buch.placed[pd.k];
+  const zug = pd.art === 'zug', x = zug && S.buch.placed.find(i => i.s === pd.s);
   if (zug && !x) return;
   const size = BK.L.pw * STICKER_BREITE;
   let off = { x: 0, y: size * 0.3 };          // ein neuer Sticker hängt etwas über dem Finger, damit man ihn sieht
@@ -1507,10 +1629,10 @@ function ziehStart(pd, e) {
     pd.el.style.visibility = 'hidden';
   } else pd.el.classList.add('weg');
   const g = document.createElement('img');
-  g.className = 'ghost'; g.alt = ''; g.src = img(zug ? x.s : pd.s);
+  g.className = 'ghost'; g.alt = ''; g.draggable = false; g.src = stickerBild(pd.s);
   g.style.width = `${size}px`;
   fxRoot.appendChild(g);
-  BK.drag = { art: pd.art, s: zug ? x.s : pd.s, k: pd.k, el: pd.el, g, off, r: zug ? x.r : Math.round(Math.random() * 16 - 8),
+  BK.drag = { art: pd.art, s: pd.s, el: pd.el, g, off, r: zug ? x.r : Math.round(Math.random() * 16 - 8),
     ptr: new Map([[pd.id, punkt(e)]]), haupt: pd.id, w0: null, r0: 0, cx: 0, cy: 0 };
   waehle(null);
   Sound.fx('abloesen');
@@ -1525,9 +1647,7 @@ function ziehBewegen() {
   }
   const h = dr.ptr.get(dr.haupt) || pts[0];
   dr.cx = h.x - dr.off.x; dr.cy = h.y - dr.off.y;
-  dr.g.style.left = `${dr.cx}px`;
-  dr.g.style.top = `${dr.cy}px`;
-  dr.g.style.setProperty('--r', `${dr.r}deg`);
+  dr.g.style.transform = `translate3d(${dr.cx}px, ${dr.cy}px, 0) translate(-50%, -50%) rotate(${dr.r}deg) scale(1.08)`;
   const ziel = zielBei(dr.cx, dr.cy, dr.art);
   document.querySelectorAll('#buch .ziel').forEach(e => { if (e !== ziel) e.classList.remove('ziel'); });
   if (ziel) ziel.classList.add('ziel');
@@ -1544,6 +1664,7 @@ function zielBei(x, y, art) {
 function buchLos(e) {
   if (view.name !== 'buch') return;
   if (BK.pend && e.pointerId === BK.pend.id) BK.pend = null;          // nur getippt: das macht »click«
+  if (BK.roll && e.pointerId === BK.roll.id) rollEnde();
   const sw = BK.swipe;
   if (sw && e.pointerId === sw.id) {
     BK.swipe = null;
@@ -1565,20 +1686,24 @@ window.addEventListener('pointercancel', buchLos);
 function ziehEnde(abbruch) {
   const dr = BK.drag;
   BK.drag = null;
+  BK.schluck = true;
   document.querySelectorAll('#buch .ziel').forEach(e => e.classList.remove('ziel'));
   const ziel = abbruch ? null : zielBei(dr.cx, dr.cy, dr.art);
-  dr.g.remove();
-  if (ziel && ziel.dataset.p) {
+  if (ziel && ziel.dataset.p) {                                        // der gezogene Sticker (bzw. sein Bild) wird eingeklebt
     const r = ziel.getBoundingClientRect(), fit = v => Math.min(94, Math.max(6, v));
-    einkleben(dr.s, +ziel.dataset.p, fit((dr.cx - r.left) / r.width * 100), fit((dr.cy - r.top) / r.height * 100), dr.r, dr.art === 'zug' ? dr.k : null);
-  } else if (ziel && dr.art === 'zug') abloesen(dr.k, true);         // in den Stapel gezogen = abgelöst
-  else {                                                               // daneben: alles bleibt, wie es war
+    if (dr.art === 'zug') dr.g.remove();
+    einkleben(dr.s, +ziel.dataset.p, fit((dr.cx - r.left) / r.width * 100), fit((dr.cy - r.top) / r.height * 100), dr.r, dr.art === 'zug' ? dr.el : dr.g);
+    return;
+  }
+  dr.g.remove();
+  if (ziel && dr.art === 'zug') abloesen(dr.s, true);         // in den Stapel gezogen = abgelöst
+  else {                                                         // daneben: alles bleibt, wie es war
     dr.el.style.visibility = '';
     dr.el.classList.remove('weg');
     sfx.tap();
   }
 }
-window.addEventListener('resize', () => { if (view.name === 'buch' && !BK.busy && !BK.drag) zeichneBuch(); });
+window.addEventListener('resize', () => { if (view.name === 'buch' && !BK.busy && !BK.drag && masseNeu()) zeichneBuch(); });
 
 /* --------------------------------------------------------- Einstellungen */
 let sheetOpen = null;
@@ -1742,7 +1867,7 @@ function onClick(e) {
     case 'blatt': blaettern(+b.dataset.d); break;
     case 'buch-auf': blaettern(1); break;
     case 'tray-st': antippenEinkleben(b.dataset.s); break;
-    case 'pst': sfx.tap(); waehle(BK.sel === +b.dataset.k ? null : +b.dataset.k); break;
+    case 'pst': sfx.tap(); waehle(BK.sel === b.dataset.s ? null : b.dataset.s); break;
     case 'st-rot': drehen(+b.dataset.d); break;
     case 'st-weg': if (BK.sel != null) abloesen(BK.sel); break;
     case 'install': {

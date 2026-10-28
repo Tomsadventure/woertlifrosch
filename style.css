@@ -629,7 +629,7 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
 /* ------------------------------------------------------------ Sammelbuch (2026-10-26, wie beim Rechentiger) */
 :root { --buch-leder: #1F3A78; --buch-leder-tief: #12244F; --buch-akzent: var(--frog-deep); }
 .book-banner {
-  display: flex; align-items: center; gap: 14px; width: 100%; margin: 4px 0 26px; padding: 12px 20px 12px 14px; text-align: left;
+  display: flex; align-items: center; gap: 14px; width: 100%; margin: 22px 0 26px; padding: 12px 20px 12px 14px; text-align: left;   /* Abstand oben: nicht an den Übungen kleben (2026-10-28) */
   border-radius: var(--r-lg); color: #F7DE9B; background: linear-gradient(160deg, var(--buch-leder), var(--buch-leder-tief) 75%);
   box-shadow: 0 5px 0 rgba(0, 0, 0, .35), 0 12px 24px rgba(0, 0, 0, .18), inset 0 0 0 2px rgba(217, 169, 63, .5); transition: transform .12s;
 }
@@ -645,9 +645,10 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
 body[data-view="buch"] { overflow: hidden; }
 body[data-view="buch"] .screen.buch {
   display: flex; flex-direction: column; gap: 6px; height: 100vh; height: 100dvh; padding-bottom: max(8px, env(safe-area-inset-bottom));
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
 .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; touch-action: none; }
-.book { position: relative; flex: none; width: calc(var(--pw) * 2); height: var(--ph); perspective: calc(var(--pw) * 3.2); transition: transform .8s cubic-bezier(.45, .05, .3, 1); }
+.book { position: relative; flex: none; width: calc(var(--pw) * 2); height: var(--ph); transition: transform .7s cubic-bezier(.45, .05, .3, 1); }
 .book.einzel { width: var(--pw); }
 .book.doppel.zu { transform: translateX(calc(var(--pw) * -.5)); }
 .spread { position: relative; display: flex; width: 100%; height: 100%; isolation: isolate; }
@@ -663,8 +664,8 @@ body[data-view="buch"] .screen.buch {
   position: relative; flex: none; width: var(--pw); height: var(--ph); overflow: hidden; background-color: #FBF5E6;
   background-repeat: no-repeat; background-size: 200% 100%; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
 }
-.page::before {   /* Papierstruktur */
-  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .28; mix-blend-mode: multiply;
+.page::before {   /* Papierstruktur (ohne mix-blend-mode: das brachte Safari beim Blättern durcheinander) */
+  content: ''; position: absolute; inset: 0; z-index: 0; pointer-events: none; opacity: .22;
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .35 0 0 0 0 .2 0 0 0 .5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 .page.halb-l { background-position: 0 0; }
@@ -676,7 +677,6 @@ body[data-view="buch"] .screen.buch {
 .falz { position: absolute; z-index: 3; top: 0; bottom: 0; width: 14%; pointer-events: none; }
 .page.links .falz { right: 0; background: linear-gradient(to left, rgba(60, 40, 10, .3), rgba(60, 40, 10, .08) 35%, transparent); }
 .page.rechts .falz, .page.solo .falz { left: 0; background: linear-gradient(to right, rgba(60, 40, 10, .3), rgba(60, 40, 10, .08) 35%, transparent); }
-.page.rueckseite { background-color: #F4EBD6; }
 
 /* Umschlag: Leder mit Goldprägung, Léo im Medaillon */
 .page.umschlag {
@@ -735,33 +735,41 @@ body[data-view="buch"] .screen.buch {
 .pst.sel { z-index: 4; outline: 3px dashed rgba(255, 255, 255, .95); outline-offset: 2px; border-radius: 16px; filter: drop-shadow(0 0 6px rgba(255, 190, 60, .95)); }
 .pst.klebt { animation: klebt .35s ease-out; }
 @keyframes klebt {
-  from { transform: translate(-50%, -50%) rotate(var(--r, 0deg)) scale(1.12); filter: drop-shadow(0 12px 12px rgba(40, 25, 5, .35)); }
+  from { transform: translate(-50%, -50%) rotate(var(--r, 0deg)) scale(1.12); }
   to { transform: translate(-50%, -50%) rotate(var(--r, 0deg)) scale(1); }
 }
-.ghost { position: fixed; z-index: 40; pointer-events: none; transform: translate(-50%, -50%) rotate(var(--r, 0deg)) scale(1.08); filter: drop-shadow(0 14px 14px rgba(40, 25, 5, .35)); }
+/* der Sticker unter dem Finger: bewegt mit transform (app.js → ziehBewegen), das ist auf iPhone/iPad flüssig */
+.ghost { position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none; will-change: transform; filter: drop-shadow(0 14px 14px rgba(40, 25, 5, .35)); }
 
-/* Das Blatt, das gerade umgeblättert wird */
-.leaf { position: absolute; z-index: 5; top: 0; width: var(--pw); height: var(--ph); transform-style: preserve-3d; pointer-events: none; }
-.leaf.vor { left: calc(100% - var(--pw)); transform-origin: left center; animation: blattVor .8s cubic-bezier(.45, .05, .3, 1) forwards; }
-.leaf.zurueck { left: 0; transform-origin: right center; animation: blattZurueck .8s cubic-bezier(.45, .05, .3, 1) forwards; }
-.leaf.rein { left: 0; transform-origin: left center; animation: blattRein .8s cubic-bezier(.45, .05, .3, 1) forwards; }
-.face { position: absolute; inset: 0; -webkit-backface-visibility: hidden; backface-visibility: hidden; }
-.face * { -webkit-backface-visibility: hidden; backface-visibility: hidden; }
-.face.hinten { transform: rotateY(180deg); }
-.face > .page { position: absolute; inset: 0; }
-.face::after { content: ''; position: absolute; inset: 0; z-index: 9; pointer-events: none; opacity: 0; animation: blattSchatten .8s ease-in-out; }
-.leaf.vor .face.vorne::after, .leaf.rein .face.vorne::after { background: linear-gradient(to left, rgba(40, 25, 5, .35), transparent 70%); }
-.leaf.zurueck .face.vorne::after { background: linear-gradient(to right, rgba(40, 25, 5, .35), transparent 70%); }
-.face.hinten::after { background: linear-gradient(to right, rgba(40, 25, 5, .3), transparent 70%); }
-@keyframes blattVor { from { transform: rotateY(0); } to { transform: rotateY(-180deg); } }
-@keyframes blattZurueck { from { transform: rotateY(0); } to { transform: rotateY(180deg); } }
-@keyframes blattRein { from { transform: rotateY(-180deg); } to { transform: rotateY(0); } }
-@keyframes blattSchatten { 50% { opacity: 1; } }
-/* Einzelseite (Handy): links vom Buch ist kein Platz – die umgeblätterte Seite verschwindet in der zweiten Hälfte */
-.book.einzel .leaf.vor { animation-name: blattWeg; }
-.book.einzel .leaf.rein { animation-name: blattHer; }
-@keyframes blattWeg { 0% { transform: rotateY(0); opacity: 1; } 55% { opacity: 1; } 100% { transform: rotateY(-180deg); opacity: 0; } }
-@keyframes blattHer { 0% { transform: rotateY(-180deg); opacity: 0; } 45% { opacity: 1; } 100% { transform: rotateY(0); opacity: 1; } }
+/* Das Blatt beim Umblättern (2026-10-28): zwei flache Hälften nacheinander statt einer 3D-Karte mit Rückseite (die zeigte
+   Safari gespiegelt durchscheinend). .hoch hebt sich vom Buchrücken bis senkrecht, dann legt sich .runter auf die andere Seite. */
+.leaf { position: absolute; z-index: 5; inset: 0; pointer-events: none; perspective: calc(var(--pw) * 3.2); }
+.halb { position: absolute; top: 0; width: var(--pw); height: var(--ph); will-change: transform; }
+.halb > .page { position: absolute; inset: 0; }
+.halb::after { content: ''; position: absolute; inset: 0; z-index: 9; pointer-events: none; opacity: 0; }
+.halb.hoch { animation: .35s cubic-bezier(.45, 0, .9, .55) forwards; }
+.halb.runter { animation: .35s cubic-bezier(.1, .45, .55, 1) .35s both; }
+.halb.hoch::after { animation: halbDunkel .35s ease-in forwards; }
+.halb.runter::after { animation: halbHell .35s ease-out .35s both; }
+.leaf.vor .halb.hoch { left: var(--pw); transform-origin: left center; animation-name: halbHochVor; }
+.leaf.vor .halb.runter { left: 0; transform-origin: right center; animation-name: halbRunterVor; }
+.leaf.zurueck .halb.hoch { left: 0; transform-origin: right center; animation-name: halbHochZurueck; }
+.leaf.zurueck .halb.runter { left: var(--pw); transform-origin: left center; animation-name: halbRunterZurueck; }
+.leaf.vor .halb.hoch::after, .leaf.zurueck .halb.runter::after { background: linear-gradient(to right, rgba(40, 25, 5, .45), rgba(40, 25, 5, .15)); }
+.leaf.vor .halb.runter::after, .leaf.zurueck .halb.hoch::after { background: linear-gradient(to left, rgba(40, 25, 5, .45), rgba(40, 25, 5, .15)); }
+@keyframes halbHochVor { from { transform: rotateY(0); } to { transform: rotateY(-90deg); } }
+@keyframes halbRunterVor { from { transform: rotateY(90deg); } to { transform: rotateY(0); } }
+@keyframes halbHochZurueck { from { transform: rotateY(0); } to { transform: rotateY(90deg); } }
+@keyframes halbRunterZurueck { from { transform: rotateY(-90deg); } to { transform: rotateY(0); } }
+@keyframes halbDunkel { to { opacity: 1; } }
+@keyframes halbHell { from { opacity: 1; } to { opacity: 0; } }
+/* Einzelseite (Handy): links vom Buch ist kein Platz – die Seite hebt sich weg (.weg) oder kommt zurück (.her) */
+.leaf.weg .halb.hoch { left: 0; transform-origin: left center; animation: halbWeg .45s cubic-bezier(.45, 0, .7, .6) forwards; }
+.leaf.her .halb.runter { left: 0; transform-origin: left center; animation: halbHer .45s cubic-bezier(.3, .4, .55, 1) both; }
+.leaf.weg .halb.hoch::after { background: linear-gradient(to right, rgba(40, 25, 5, .45), rgba(40, 25, 5, .15)); animation-duration: .45s; }
+.leaf.her .halb.runter::after { background: linear-gradient(to right, rgba(40, 25, 5, .45), rgba(40, 25, 5, .15)); animation-duration: .45s; animation-delay: 0s; }
+@keyframes halbWeg { 0% { transform: rotateY(0); opacity: 1; } 70% { opacity: 1; } 100% { transform: rotateY(-90deg); opacity: 0; } }
+@keyframes halbHer { 0% { transform: rotateY(-90deg); opacity: 0; } 30% { opacity: 1; } 100% { transform: rotateY(0); opacity: 1; } }
 
 /* Blättern, Stapel, Werkzeug */
 .buch-nav { display: flex; align-items: center; justify-content: center; gap: 14px; }
@@ -771,8 +779,9 @@ body[data-view="buch"] .screen.buch {
 .tray.ziel { background: var(--berry-soft); }
 .tray-kopf { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; padding: 0 6px 4px; font-size: 15px; }
 .tray-kopf span { font-size: 13px; font-weight: 700; color: var(--ink-soft); }
-.tray-row { display: flex; gap: 8px; padding: 2px 2px 4px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: pan-x; }
-.tray-st { flex: none; display: grid; place-items: center; width: 76px; height: 76px; border-radius: 14px; background: var(--bg); touch-action: pan-x; transition: opacity .2s; }
+/* touch-action: none – den Stapel scrollt app.js selbst (rollen), sonst bricht Safari das Ziehen nach oben ab */
+.tray-row { display: flex; gap: 8px; padding: 2px 2px 4px; overflow-x: auto; overscroll-behavior-x: contain; touch-action: none; }
+.tray-st { flex: none; display: grid; place-items: center; width: 76px; height: 76px; border-radius: 14px; background: var(--bg); touch-action: none; transition: opacity .2s; }
 .tray-st img { width: 68px; height: 68px; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
 .tray-st.weg { opacity: .3; }
 .tray-leer { margin: 8px; text-align: center; font-size: 15px; font-weight: 700; color: var(--ink-soft); }
@@ -796,5 +805,5 @@ body[data-view="buch"] .screen.buch {
   .bb-text small { font-size: 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .leaf, .face::after, .pst.klebt { animation: none !important; }
+  .halb, .halb::after, .pst.klebt { animation: none !important; }
 }
