@@ -44,7 +44,7 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; touch-action: manipulation; }   /* kein Doppeltipp-Zoom, Auseinanderziehen geht weiter */
+html { -webkit-text-size-adjust: 100%; touch-action: manipulation; }   /* kein Doppeltipp-Zoom; seit 2026-10-31 auch kein Zoomen mit zwei Fingern (app.js: gesturestart) */
 body {
   margin: 0; min-height: 100vh; min-height: 100dvh;
   font-family: 'Nunito', ui-rounded, 'Segoe UI', system-ui, sans-serif; color: var(--ink);
@@ -408,6 +408,8 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
 .pc-band .pc-wm { width: 14px; height: 14px; font-size: 11px; background: none; }
 .pc-band span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--fr); font-weight: 700; }
 .pc-band i { font-style: normal; background: var(--ink); color: #fff; border-radius: 6px; padding: 0 5px; }
+/* Captain (2026-10-31): Binde mit «C» oben links, die Karte ist Glitzer */
+.pc-capt { position: absolute; top: 5%; left: 6%; z-index: 1; width: 24%; height: auto; font-family: inherit; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .35)); }
 .pcard.glitzer { border-color: transparent; background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, #FF9DE2, #9DD6FF, #B5FF9D, #FFE29D, #FF9DE2) border-box; }
 .pcard.gold { border-color: transparent; background: linear-gradient(#fff, #fff) padding-box, linear-gradient(135deg, #FFE58A, #C8901A, #FFF3B0, #B07A10) border-box;
   box-shadow: 0 0 0 1px rgba(176, 122, 16, .4), 0 4px 16px rgba(232, 180, 55, .55); }
@@ -494,9 +496,9 @@ body[data-view="task"] .screen.task[data-kind="hoeren"] { height: 100vh; height:
 .pk-card:not(.flipped) .pk-name { opacity: 0; }
 .pk-card.flipped.glitzer .pcard { box-shadow: 0 0 22px rgba(210, 160, 255, .95), 0 0 6px #fff; }
 .pk-card.flipped.gold .pcard { box-shadow: 0 0 30px rgba(255, 205, 70, 1), 0 0 8px #fff; }
-.pk-card.flipped.gold::before { content: ''; position: absolute; left: -35%; right: -35%; top: -20%; aspect-ratio: 1; z-index: -1; border-radius: 50%;
+.pk-card.flipped.gold::before { content: ''; pointer-events: none; position: absolute; left: -35%; right: -35%; top: -20%; aspect-ratio: 1; z-index: -1; border-radius: 50%;
   background: repeating-conic-gradient(rgba(255, 220, 110, .4) 0 9deg, transparent 9deg 18deg); -webkit-mask: radial-gradient(circle, #000 30%, transparent 70%); mask: radial-gradient(circle, #000 30%, transparent 70%); animation: spin 8s linear infinite; }
-.pack-after { min-height: 60px; }
+.pack-after { position: relative; z-index: 1; min-height: 60px; }   /* über den Gold-Strahlen (die fingen sonst das Tippen auf «Nächstes Päckchen» ab, 2026-10-31) */
 .pack-sum { margin: 14px 0 0; font-weight: 700; font-size: 17px; }
 .pack-after .confirm-actions { justify-content: center; flex-wrap: wrap; }
 .pack-after .btn:not(.primary) { background: rgba(255, 255, 255, .94); color: var(--ink); }

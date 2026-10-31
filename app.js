@@ -137,6 +137,7 @@ const FLAG = {
   BRA: '<rect width="30" height="21" fill="#009C3B"/><path d="M15 2.5L27.5 10.5 15 18.5 2.5 10.5z" fill="#FFDF00"/><circle cx="15" cy="10.5" r="5.2" fill="#002776"/>',
   ARG: '<rect width="30" height="20" fill="#74ACDF"/><rect y="6.67" width="30" height="6.67" fill="#fff"/><circle cx="15" cy="10" r="2.4" fill="#F6B40E"/>',
   SEN: `<rect width="10" height="20" fill="#00853F"/><rect x="10" width="10" height="20" fill="#FDEF42"/><rect x="20" width="10" height="20" fill="#E31B23"/><polygon points="${star5(15, 10.4, 3.6)}" fill="#00853F"/>`,
+  ENG: '<rect width="30" height="20" fill="#fff"/><rect x="12.5" width="5" height="20" fill="#CF142B"/><rect y="7.5" width="30" height="5" fill="#CF142B"/>',
 };
 const FLAG_BOX = { SUI: '0 0 32 32', GER: '0 0 30 18', BRA: '0 0 30 21' };
 const flagHTML = code => (FLAG[code] ? `<svg class="flag" viewBox="${FLAG_BOX[code] || '0 0 30 20'}" aria-hidden="true">${FLAG[code]}</svg>` : '');
@@ -475,7 +476,7 @@ const teamColors = s => { const t = TEAM[s.team]; return t ? `--t1:${t.farben[0]
 const cardHTML = (id, cls = '') => {
   const s = STICKER[id];
   return `<span class="pcard ${s.art} ${s.format} ${cls}" style="${teamColors(s)}"><img src="${img(id)}" alt="${esc(s.de)}" loading="lazy">
-    <span class="pc-band">${s.team ? flagHTML(s.team) : '<b class="pc-wm">★</b>'}<span lang="fr">${esc(s.kurz)}</span><i>${NUM[id]}</i></span></span>`;
+    ${s.rolle === 'Capitaine' ? '<svg class="pc-capt" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#FFD23A" stroke="#fff" stroke-width="2"/><text x="12" y="16.6" text-anchor="middle" font-size="14" font-weight="900" fill="#1F2A44">C</text></svg>' : ''}<span class="pc-band">${s.team ? flagHTML(s.team) : '<b class="pc-wm">★</b>'}<span lang="fr">${esc(s.kurz)}</span><i>${NUM[id]}</i></span></span>`;
 };
 /* Ein Päckchen als Bild (CSS): klein auf dem Ergebnis-Bildschirm, gross zum Aufreissen */
 const pochetteHTML = (kind = 'normal', cls = '') => `<span class="pochette ${kind === 'special' ? 'special' : ''} ${cls}"><span class="poch-top"></span>
@@ -1923,6 +1924,9 @@ document.addEventListener('keydown', e => {
   if (TYPEABLE.test(k)) { typeKey(k); e.preventDefault(); }
   else if (e.key === 'Backspace') { backspace(); e.preventDefault(); }
 });
+/* Kein Zoomen mit zwei Fingern (2026-10-31): auf dem iPad war die Panini-Seite vergrössert und liess sich seitlich verschieben.
+   Safari zoomt trotz maximum-scale; gesturestart abfangen verhindert es (Ziehen und Drehen im Sammelbuch gehen weiter). */
+['gesturestart', 'gesturechange'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
 
 /* ================================================================== Start */
 try { history.replaceState({ name: 'home' }, ''); } catch (e) { /* file:// */ }

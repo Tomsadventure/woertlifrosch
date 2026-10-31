@@ -254,9 +254,9 @@ function toNextSticker(stickers, have, pts) {
    Sticker dieser Art – auch einer, den man schon hat (Doppelte). Im selben Päckchen kommt keiner zweimal.
    Doppelte tauscht man bei Léo gegen einen fehlenden Sticker nach Wahl (TRADE = Preis je nach Seltenheit).
    Sind alle Wörter der Unité sicher, gibt es die Pochette spéciale mit allen, die noch fehlen.
-   Simulation (test.mjs, Docs/App.md): 129 Sticker, ein Kind mit 80 % Treffern – die Seite ist meist voll, bevor alle
+   Simulation (test.mjs, Docs/App.md): 144 Sticker (seit 2026-10-31 mit England), ein Kind mit 80 % Treffern – die Seite ist meist voll, bevor alle
    Wörter sicher sind; ein fehlerfreies Kind braucht öfter die Pochette spéciale. */
-const PER_PACK = 12, PACK_SIZE = 5;
+const PER_PACK = 10, PACK_SIZE = 5;                  // bis 2026-10-30: 12 (mit England und Captains 144 Sticker, 28 Glitzer)
 const RARITY = { gold: 0.05, glitzer: 0.20 };            // Rest (75 %) normal
 const TRADE = { normal: 4, glitzer: 6, gold: 10 };
 const packsFromPoints = pts => Math.floor(pts / PER_PACK);
