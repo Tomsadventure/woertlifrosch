@@ -253,9 +253,10 @@ function toNextSticker(stickers, have, pts) {
    Jeder Platz im Päckchen ist mit RARITY gold (super selten) oder glitzer (selten), sonst normal; dann ein zufälliger
    Sticker dieser Art – auch einer, den man schon hat (Doppelte). Im selben Päckchen kommt keiner zweimal.
    Doppelte tauscht man bei Léo gegen einen fehlenden Sticker nach Wahl (TRADE = Preis je nach Seltenheit).
-   Sind alle Wörter der Unité sicher, gibt es die Pochette spéciale mit allen, die noch fehlen.
+   Sind alle Wörter der Unité sicher, gibt es die Pochette spéciale – seit 2026-11-07 ein gewöhnliches Päckchen (PACK_SIZE
+   zufällige), nicht mehr alle fehlenden: die Seite füllt sich nie von selbst, Fehlendes ertauscht man (Wunsch des Benutzers).
    Simulation (test.mjs, Docs/App.md): 144 Sticker (seit 2026-10-31 mit England), ein Kind mit 80 % Treffern – die Seite ist meist voll, bevor alle
-   Wörter sicher sind; ein fehlerfreies Kind braucht öfter die Pochette spéciale. */
+   Wörter sicher sind. */
 const PER_PACK = 10, PACK_SIZE = 5;                  // bis 2026-10-30: 12 (mit England und Captains 144 Sticker, 28 Glitzer)
 const RARITY = { gold: 0.05, glitzer: 0.20 };            // Rest (75 %) normal
 const TRADE = { normal: 4, glitzer: 6, gold: 10 };
@@ -273,11 +274,6 @@ function drawPack(cards, rnd = Math.random, size = PACK_SIZE) {
     out.push(pool[Math.floor(rnd() * pool.length)].id);
   }
   return out;
-}
-/* Pochette spéciale: alle fehlenden (gemischt); fehlen weniger als PACK_SIZE, wird mit gewöhnlichen Zügen aufgefüllt */
-function specialPack(cards, have, rnd = Math.random) {
-  const miss = shuffle(cards.filter(c => !have.includes(c.id)).map(c => c.id), rnd);
-  return miss.concat(drawPack(cards.filter(c => !miss.includes(c.id)), rnd, Math.max(0, PACK_SIZE - miss.length)));
 }
 /* Einkleben: P = { have: [IDs im Album], dup: {ID: Anzahl Doppelte} } wird verändert. Ergebnis [{ id, neu }] */
 function stick(P, ids) {
@@ -304,7 +300,7 @@ function trade(P, card, ids) {
 
 const api = { MAX, PER_STICKER, blank, record, norm, bare, isRight, onlyAccents, closest, diff, letterPuzzle, wordPuzzle,
   wordTokens, puzzleKind, choices, buildSession, buildDrill, buildTest, memoryDeck, shuffle, spellKind, points,
-  stickersEarned, toNextSticker, PER_PACK, PACK_SIZE, RARITY, TRADE, packsFromPoints, toNextPack, drawPack, specialPack,
+  stickersEarned, toNextSticker, PER_PACK, PACK_SIZE, RARITY, TRADE, packsFromPoints, toNextPack, drawPack,
   stick, dupCount, tradeCost, trade };
 if (typeof module !== 'undefined' && module.exports) module.exports = api;
 else root.Lernen = api;

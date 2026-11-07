@@ -1,13 +1,30 @@
-/* Wörtli-Frosch – Französisch-Wörter lernen mit Léo, dem Frosch (6. Klasse, Schweiz).
-   Eine Seite, kein Framework. Wörter aus daten.js, Lernlogik aus lernen.js, Fortschritt auf dem Gerät (localStorage).
+/* Wörtli-Frosch – Französisch-Wörter lernen mit Léo, dem Frosch (6. Klasse, Schweiz), seit 2026-11-07 auch Englisch mit dem blauen Giftfrosch.
+   Eine Seite, kein Framework. Wörter aus daten.js / daten_en.js, Lernlogik aus lernen.js, Fortschritt auf dem Gerät (localStorage).
    Gleich aufgebaut wie Wörtli-Panda; neu: zwei Wortlisten je Unit (Vocabulaire / Vocabulaire plus), Akzente, Stickeralbum
-   mit einer Seite je Unité (Unité 1: Léo-Sticker, Unité 2: Panini-Album der Frosch-WM mit Päckchen und Tauschen). */
+   mit einer Seite je Unité (Unité 1: Léo-Sticker, Unité 2: Panini-Album der Frosch-WM mit Päckchen und Tauschen).
+   Englisch: Wörter von Unit 2 in vier Teilen, Panini-Heft der Frog World Cup Switzerland zum Selber-Einkleben. */
 (() => {
 'use strict';
 const L = window.Lernen;
-const D = window.DATEN;
-const WORD = Object.fromEntries(D.woerter.map(w => [w.id, w]));
-const STICKER = Object.fromEntries(D.stickers.map(s => [s.id, s]));
+/* Zwei Teile (seit 2026-11-07, Wunsch des Benutzers): die Startseite fragt «Französisch oder Englisch?». Französisch mit Léo
+   (daten.js), Englisch mit dem blauen Pfeilgiftfrosch (daten_en.js, Name in SPRACHEN.en.name) – je eigener Lernstand und eigenes Album.
+   F = der gewählte Teil; setSprache() setzt D, WORD, STICKER, UNITS … und lädt den Lernstand S dieses Teils.
+   Bilder und Töne der Figur heissen <p>_<name> (leo_jubel, blau_jubel): FP('jubel'). */
+const SPRACHEN = {
+  fr: { code: 'fr', daten: 'DATEN', key: 'woertlifrosch.v1', name: 'Léo', p: 'leo', sprache: 'Französisch', lang: 'fr', farbe: '#5DBB2F',
+    hallo: n => `Salut${n ? ` ${n}` : ''} ! Moi, c'est Léo.`, lob: ['Super!', 'Bravo !', 'Génial !', 'Richtig!'],
+    fuss: 'Französisch 6. Klasse · Wörter aus dem Schulbuch · funktioniert auch ohne Internet', tasten: 'éèêàâçîôùû', buchstabe: 'letter_',
+    zeichen: { 'é': 'e_aigu', 'è': 'e_grave', 'ê': 'e_circ', 'ë': 'e_trema', 'à': 'a_grave', 'â': 'a_circ', 'ç': 'c_cedille',
+      'î': 'i_circ', 'ï': 'i_trema', 'ô': 'o_circ', 'ù': 'u_grave', 'û': 'u_circ', "'": 'apostrophe', '-': 'tiret' },
+    pack: { titel: 'Coupe du monde<br>des grenouilles', normal: n => `Pochette · ${n} stickers`, spezial: 'Pochette spéciale', bild: 'leo_fussball' } },
+  en: { code: 'en', daten: 'DATEN_EN', key: 'woertlifrosch.en.v1', name: 'Finn', p: 'blau', sprache: 'Englisch', lang: 'en', farbe: '#2F6FE0',
+    hallo: n => `Hi${n ? ` ${n}` : ''}! I'm Finn.`, lob: ['Super!', 'Great!', 'Well done!', 'Richtig!'],
+    fuss: 'Englisch 6. Klasse · Wörter vom Wörterblatt · funktioniert auch ohne Internet', tasten: '', buchstabe: 'blau_letter_',
+    zeichen: { "'": 'apostrophe', '-': 'hyphen' },
+    pack: { titel: 'Frog World Cup<br>Switzerland', normal: n => `Pack · ${n} stickers`, spezial: 'Bonus pack', bild: 'blau_fussball' } },
+};
+let F = SPRACHEN.fr, D, WORD, STICKER, UNITS, UNIT, ACTIVE, TEAM;
+const FP = n => `${F.p}_${n}`;
 const img = name => `img/${name}.webp`;
 // Farbe mischen: t = 0 … 1 Richtung `to` (hell = heller, #000000 = dunkler) – für den Unit-farbigen Kopf der Startseite
 // (wie Wörtli-Panda); oben links mit warmem Hellgelb statt Weiss, damit der Verlauf leuchtet
@@ -17,14 +34,33 @@ const mix = (hex, to, t) => '#' + [1, 3, 5].map(i => {
 }).join('');
 const unitColors = u => `--u:${u.farbe};--u-hi:${mix(u.farbe, '#fff3b0', .3)};--u-lo:${mix(u.farbe, '#000000', .13)};--u-deep:${mix(u.farbe, '#000000', .3)}`;
 const isPlus = l => /plus/i.test(l.teil);
-const UNITS = [...new Set(D.listen.map(l => l.unit))].map(n => {
-  const ls = D.listen.filter(l => l.unit === n);
-  return { n, lists: ls, aktiv: ls.some(l => l.aktiv), titel: ls[0].titel, thema: ls[0].thema, farbe: ls[0].farbe, album: ls[0].album || 'leo' };
-});
-const UNIT = Object.fromEntries(UNITS.map(u => [u.n, u]));
-const ACTIVE = UNITS.filter(u => u.aktiv);
-const TEAM = Object.fromEntries((D.teams || []).map(t => [t.id, t]));
+/* Den Teil code (fr/en) wählen: Daten, Nachschlage-Tabellen, Album-Nummern und den Lernstand dieses Teils laden */
+function setSprache(code) {
+  F = SPRACHEN[code] || SPRACHEN.fr;
+  D = window[F.daten];
+  WORD = Object.fromEntries(D.woerter.map(w => [w.id, w]));
+  STICKER = Object.fromEntries(D.stickers.map(s => [s.id, s]));
+  UNITS = [...new Set(D.listen.map(l => l.unit))].map(n => {
+    const ls = D.listen.filter(l => l.unit === n);
+    return { n, lists: ls, aktiv: ls.some(l => l.aktiv), titel: ls[0].titel, thema: ls[0].thema, farbe: ls[0].farbe, album: ls[0].album || 'leo' };
+  });
+  UNIT = Object.fromEntries(UNITS.map(u => [u.n, u]));
+  ACTIVE = UNITS.filter(u => u.aktiv);
+  TEAM = Object.fromEntries((D.teams || []).map(t => [t.id, t]));
+  NUM = {};
+  ACTIVE.forEach(u => unitStickers(u.n).forEach((s, i) => { NUM[s.id] = i + 1; }));
+  S = load();
+  albumN = null; karteI = 0; HF.i = 0; HF.sel = null;
+  document.documentElement.lang = 'de';
+  [FP('denkt'), FP('jubel'), FP('mut')].forEach(n => { new Image().src = img(n); });
+}
 const TEILE = [['grund', 'Vocabulaire'], ['plus', 'Vocabulaire plus'], ['beide', 'Beides']];
+/* Wahl der Wortliste(n) einer Unit: Französisch Vocabulaire / plus / Beides, Englisch je Teil des Wörterblatts oder alle */
+function teilWahl(u) {
+  const ls = u.lists.filter(l => l.aktiv);
+  if (F.code === 'fr') return ls.some(isPlus) && ls.some(l => !isPlus(l)) ? TEILE : [];
+  return ls.length > 1 ? ls.map(l => [l.id, l.teil]).concat([['beide', 'Alle']]) : [];
+}
 /* Sammelbuch: Seite 0 = Umschlag, 1 = »Dieses Buch gehört«, 2 = Titelseite, 3–36 = 17 gemalte Doppelseiten (neue kommen immer ans Ende,
    damit eingeklebte Sticker auf ihren Seiten bleiben).
    Hinein kommen nur Léo-Sticker (Album »leo«), keine Panini-Karten (Wunsch des Benutzers 2026-10-26). */
@@ -37,12 +73,11 @@ const BUCH_SEITEN = 3 + 2 * SZENEN.length;
 const buchSticker = id => !!STICKER[id] && !!UNIT[STICKER[id].unit] && UNIT[STICKER[id].unit].album !== 'panini';
 
 /* ================================================================ Speicher */
-const KEY = 'woertlifrosch.v1';
 const DEFAULTS = { name: '', length: 10, hilfe: 'auto', testLength: 0, voice: true, autoplay: true, sounds: true };
-let S = load();
+let S;                                                        // Lernstand des gewählten Teils (setSprache)
 function load() {
   let d = null;
-  try { d = JSON.parse(localStorage.getItem(KEY)); } catch (e) { /* privates Fenster o. Ä. */ }
+  try { d = JSON.parse(localStorage.getItem(F.key)); } catch (e) { /* privates Fenster o. Ä. */ }
   d = d && typeof d === 'object' ? d : {};
   const firstActive = (UNITS.find(u => u.aktiv) || UNITS[0]).n;
   const arr = (x, n) => (Array.isArray(x) ? x.filter(id => STICKER[id]).slice(0, n) : []);
@@ -50,11 +85,12 @@ function load() {
     settings: Object.assign({}, DEFAULTS, d.settings || {}),
     w: d.w && typeof d.w === 'object' ? d.w : {},          // Wort-ID -> Lernstand (lernen.js)
     unit: d.unit && UNIT[d.unit] && UNIT[d.unit].aktiv ? d.unit : firstActive,
-    teil: TEILE.some(t => t[0] === d.teil) ? d.teil : 'grund',
+    teil: (F.code === 'fr' ? TEILE.some(t => t[0] === d.teil) : typeof d.teil === 'string') ? d.teil : F.code === 'fr' ? 'grund' : 'beide',
     round: d.round || 0,                                      // gezählte Runden (für »in einer späteren Runde«)
     tests: Array.isArray(d.tests) ? d.tests.slice(-20) : [],
     stickers: arr(d.stickers, 999),                           // verdiente Sticker (Reihenfolge = wann verdient)
     neu: arr(d.neu, 999),                                     // verdient, aber im Album noch nicht angeschaut
+    klebt: arr(d.klebt, 999),                                 // Englisch: im Panini-Heft eingeklebt (die anderen liegen im Stapel)
     dup: d.dup && typeof d.dup === 'object' ? Object.fromEntries(Object.entries(d.dup).filter(([id, n]) => STICKER[id] && n > 0)) : {},   // Doppelte (Panini)
     pk: d.pk && typeof d.pk === 'object' ? d.pk : {},          // Päckchen je Unité (Panini): { pts, bonus, special, opened }
     buch: buchLaden(d.buch),                                  // Sammelbuch: { placed: [{ s, p, x, y, r }], p, seen }
@@ -63,7 +99,7 @@ function load() {
     installed: !!d.installed,
   };
 }
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* egal */ } }
+function save() { try { localStorage.setItem(F.key, JSON.stringify(S)); } catch (e) { /* egal */ } }
 /* Sammelbuch: jeder Sticker höchstens einmal eingeklebt, x/y = Mitte in % der Seite, r = Drehung in Grad */
 function buchLaden(b) {
   b = b && typeof b === 'object' ? b : {};
@@ -77,13 +113,13 @@ const st = id => S.w[id] || L.blank();
 /* Die gewählten Listen der Unit: nur Vocabulaire, nur Vocabulaire plus oder beide */
 function selLists(n = S.unit, teil = S.teil) {
   const ls = UNIT[n].lists.filter(l => l.aktiv);
-  const pick = teil === 'grund' ? ls.filter(l => !isPlus(l)) : teil === 'plus' ? ls.filter(isPlus) : ls;
+  const pick = teil === 'beide' ? ls : teil === 'grund' ? ls.filter(l => !isPlus(l)) : teil === 'plus' ? ls.filter(isPlus) : ls.filter(l => l.id === teil);
   return pick.length ? pick : ls;
 }
 const listWords = ids => D.woerter.filter(w => ids.includes(w.liste));
 const words = () => listWords(selLists().map(l => l.id));
 const sicher = ws => ws.filter(w => st(w.id).box === L.MAX).length;
-const selName = () => (S.teil === 'beide' ? 'Vocabulaire + plus' : selLists()[0].teil);
+const selName = () => (S.teil === 'beide' ? (F.code === 'fr' ? 'Vocabulaire + plus' : 'alle Wörter') : selLists().length > 1 ? 'alle Wörter' : selLists()[0].teil);
 const name = () => (S.settings.name || '').trim();
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const show = t => esc(t).replace(/\.\.\./g, '…');   // »...« im Schulbuch = Lücke (»entre ... et«)
@@ -138,8 +174,14 @@ const FLAG = {
   ARG: '<rect width="30" height="20" fill="#74ACDF"/><rect y="6.67" width="30" height="6.67" fill="#fff"/><circle cx="15" cy="10" r="2.4" fill="#F6B40E"/>',
   SEN: `<rect width="10" height="20" fill="#00853F"/><rect x="10" width="10" height="20" fill="#FDEF42"/><rect x="20" width="10" height="20" fill="#E31B23"/><polygon points="${star5(15, 10.4, 3.6)}" fill="#00853F"/>`,
   ENG: '<rect width="30" height="20" fill="#fff"/><rect x="12.5" width="5" height="20" fill="#CF142B"/><rect y="7.5" width="30" height="5" fill="#CF142B"/>',
+  // seit 2026-11-07 für die Frog World Cup Switzerland (Englisch-Teil), vereinfacht wie die anderen
+  USA: `<rect width="30" height="16" fill="#B31942"/>${[1, 3, 5, 7, 9, 11].map(k => `<rect y="${(k * 16 / 13).toFixed(2)}" width="30" height="${(16 / 13).toFixed(2)}" fill="#fff"/>`).join('')}<rect width="12" height="8.6" fill="#0A3161"/>${[[2, 1.8], [6, 1.8], [10, 1.8], [4, 4.3], [8, 4.3], [2, 6.8], [6, 6.8], [10, 6.8]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r=".75" fill="#fff"/>`).join('')}`,
+  JPN: '<rect width="30" height="20" fill="#fff"/><circle cx="15" cy="10" r="6" fill="#BC002D"/>',
+  NED: '<rect width="30" height="20" fill="#21468B"/><rect width="30" height="13.33" fill="#fff"/><rect width="30" height="6.67" fill="#AE1C28"/>',
+  MEX: '<rect width="10" height="20" fill="#006847"/><rect x="10" width="10" height="20" fill="#fff"/><rect x="20" width="10" height="20" fill="#CE1126"/><circle cx="15" cy="10" r="2.6" fill="#8C5A2B"/>',
+  AUS: `<rect width="30" height="15" fill="#012169"/><path d="M0 0L15 7.5M15 0L0 7.5" stroke="#fff" stroke-width="1.6"/><path d="M0 0L15 7.5M15 0L0 7.5" stroke="#C8102E" stroke-width=".6"/><path d="M7.5 0v7.5M0 3.75h15" stroke="#fff" stroke-width="2.4"/><path d="M7.5 0v7.5M0 3.75h15" stroke="#C8102E" stroke-width="1.3"/><polygon points="${star5(7.5, 11.4, 2)}" fill="#fff"/>${[[22.5, 3], [19.5, 7], [25.5, 6.2], [22.5, 12.4]].map(([x, y]) => `<polygon points="${star5(x, y, 1.1)}" fill="#fff"/>`).join('')}`,
 };
-const FLAG_BOX = { SUI: '0 0 32 32', GER: '0 0 30 18', BRA: '0 0 30 21' };
+const FLAG_BOX = { SUI: '0 0 32 32', GER: '0 0 30 18', BRA: '0 0 30 21', USA: '0 0 30 16', AUS: '0 0 30 15' };
 const flagHTML = code => (FLAG[code] ? `<svg class="flag" viewBox="${FLAG_BOX[code] || '0 0 30 20'}" aria-hidden="true">${FLAG[code]}</svg>` : '');
 /* Lernstufe als 5 Seerosenblätter (0–5 gefüllt) */
 function levelHTML(box, cls = '') {
@@ -310,16 +352,14 @@ const voiceOn = () => S.settings.voice;
 function leo(names, append) { if (voiceOn()) Sound.say(names, append); }
 const rnd = n => 1 + Math.floor(Math.random() * n);
 const pad2 = n => String(n).padStart(2, '0');
-const line = { hallo: () => `leo_hallo_${pad2(rnd(3))}`, lob: () => `leo_lob_${pad2(rnd(12))}`, fast: () => `leo_fast_${pad2(rnd(4))}`, fertig: () => `leo_fertig_${pad2(rnd(3))}`, los: () => `leo_los_${pad2(rnd(2))}` };
+const line = { hallo: () => FP(`hallo_${pad2(rnd(3))}`), lob: () => FP(`lob_${pad2(rnd(12))}`), fast: () => FP(`fast_${pad2(rnd(4))}`), fertig: () => FP(`fertig_${pad2(rnd(3))}`), los: () => FP(`los_${pad2(rnd(2))}`) };
 function sayWord(id, slow) { Sound.say(slow ? `${id}_slow` : id); }
-/* Buchstabieren: die französischen Buchstabennamen nacheinander (é = »e accent aigu«), zwischen Wörtern eine Pause */
-const ACC = { 'é': 'e_aigu', 'è': 'e_grave', 'ê': 'e_circ', 'ë': 'e_trema', 'à': 'a_grave', 'â': 'a_circ', 'ç': 'c_cedille',
-  'î': 'i_circ', 'ï': 'i_trema', 'ô': 'o_circ', 'ù': 'u_grave', 'û': 'u_circ', "'": 'apostrophe', '-': 'tiret' };
+/* Buchstabieren: die Buchstabennamen der Sprache nacheinander (é = »e accent aigu«), zwischen Wörtern eine Pause */
 function spell(id) {
   const parts = [];
   L.norm(WORD[id].antworten[0]).split('').forEach(c => {
-    if (/[a-z]/.test(c)) parts.push(`letter_${c}`, { pause: 120 });
-    else if (ACC[c]) parts.push(`letter_${ACC[c]}`, { pause: 160 });
+    if (/[a-z]/.test(c)) parts.push(`${F.buchstabe}${c}`, { pause: 120 });
+    else if (F.zeichen[c]) parts.push(`${F.buchstabe}${F.zeichen[c]}`, { pause: 160 });
     else if (c === ' ' || c === '/') parts.push({ pause: 450 });
   });
   Sound.say(parts);
@@ -355,16 +395,18 @@ window.addEventListener('popstate', e => {
   const from = view.name;
   if (['task', 'memory', 'result'].includes(from)) { Q = null; Sound.stop(); }
   if (from === 'buch') buchAufraeumen();
-  view = ['album', 'karten', 'buch'].includes(s.name) ? { name: s.name } : { name: 'home' };
+  view = ['album', 'karten', 'buch', 'start'].includes(s.name) ? { name: s.name } : { name: 'home' };
   closeSheet(true);
   render();
   if (from === 'karten' && view.name !== 'karten') stickerToast();
 });
 function render() {
   document.body.dataset.view = view.name;
-  const R = { home: homeHTML, album: albumHTML, karten: kartenHTML, result: () => resultHTML(view.res), memory: memoryHTML };
+  document.body.dataset.sprache = view.name === 'start' ? '' : F.code;
+  const R = { start: startHTML, home: homeHTML, album: albumHTML, karten: kartenHTML, result: () => resultHTML(view.res), memory: memoryHTML };
   if (view.name === 'task') { app.innerHTML = taskShellHTML(); showTask(); return; }
   if (view.name === 'buch') { app.innerHTML = buchHTML(); buchZeigen(); return; }
+  if (view.name === 'album' && F.code === 'en') { app.innerHTML = heftHTML(); heftZeigen(); return; }   // Englisch: Panini-Heft
   app.innerHTML = R[view.name]();
   if (view.name === 'karten') afterKarte();
   if (view.name === 'album') {                                       // »Neu« gilt, bis man die Seite gesehen hat
@@ -382,8 +424,7 @@ const unitPoints = n => L.points(unitWords(n), S.w);
 const unitStickers = (n, art) => D.stickers.filter(s => s.unit === n && (!art || s.art === art));
 const isPanini = n => !!UNIT[n] && UNIT[n].album === 'panini';
 const allSafe = ws => ws.length > 0 && sicher(ws) === ws.length;
-const NUM = {};                                                     // Nummer im Album wie bei Panini (je Seite 1 …)
-ACTIVE.forEach(u => unitStickers(u.n).forEach((s, i) => { NUM[s.id] = i + 1; }));
+let NUM = {};                                                       // Nummer im Album wie bei Panini (je Seite 1 …), setSprache
 /* Päckchen einer Unité: pts = aus Päckchen-Punkten verdiente Päckchen, ans = Punkte für richtige Antworten, lp = höchster
    Stand der Lernpunkte, bonus = Bedingungen schon erfüllt, special = Pochette spéciale (0 nein, 1 verdient, 2 geöffnet),
    opened = geöffnete Päckchen. v 2 (2026-10-26): Päckchen-Punkte statt Lernpunkte – beim Übergang beginnt ans so, dass das
@@ -401,12 +442,12 @@ const packPoints = n => { const p = pk(n); p.lp = Math.max(p.lp, unitPoints(n));
 /* Eine richtige Antwort (1. Versuch) zu diesem Wort: 1 Päckchen-Punkt, wenn seine Unité eine Panini-Seite hat */
 function answerPoint(id) { const n = WORD[id] && WORD[id].unit; if (isPanini(n)) pk(n).ans++; }
 const packsPending = n => { const p = pk(n); return p.pts + p.bonus.length + (p.special ? 1 : 0) - p.opened; };
-/* Welches Päckchen kommt als nächstes? Die Pochette spéciale immer zuletzt (vorher können die anderen noch Lücken füllen) */
+/* Welches Päckchen kommt als nächstes? Die Pochette spéciale immer zuletzt (Belohnung für «alle sicher», 5 zufällige Sticker) */
 function nextPackKind(n) {
   const p = pk(n), normal = p.pts + p.bonus.length - (p.opened - (p.special === 2 ? 1 : 0));
   return normal > 0 ? 'normal' : p.special === 1 ? 'special' : null;
 }
-const pageFull = n => unitStickers(n).every(s => S.stickers.includes(s.id));
+const pageFull = n => unitStickers(n).every(s => (F.code === 'en' ? S.klebt : S.stickers).includes(s.id));   // Englisch: im Heft eingeklebt
 const pageDups = n => L.dupCount(S.dup, unitStickers(n).map(s => s.id));
 const BONUS = ['runde1', 'test100', 'serie10', 'memory9'];
 /* Neu Verdientes eintragen. ctx: { unit, runde1, test100, serie10, memory9 } aus der eben beendeten Übung.
@@ -440,6 +481,7 @@ function checkStickers(ctx = {}) {
 const BEDINGUNG = { runde1: 'Die erste Runde mit Léo', test100: 'Wörtlitest ohne Fehler (ab 10 Wörtern)', serie10: '10 richtig hintereinander',
   memory9: 'Memory in höchstens 9 Zügen' };
 function bedingungText(b) {
+  if (b === 'runde1') return `Die erste Runde mit ${F.name}`;
   if (b.startsWith('liste:')) {
     const l = D.listen.find(x => x.id === b.slice(6));
     return l ? `Alle Wörter von ${l.titel} ${l.teil} sicher` : '';
@@ -447,7 +489,7 @@ function bedingungText(b) {
   return BEDINGUNG[b] || '';
 }
 /* Wofür gab es das Päckchen? */
-const packWhy = k => (k === 'punkte' ? `${L.PER_PACK} Punkte` : k === 'special' ? 'Alle Wörter sicher – Pochette spéciale!' : `Bonus: ${bedingungText(k)}`);
+const packWhy = k => (k === 'punkte' ? `${L.PER_PACK} Punkte` : k === 'special' ? `Alle Wörter sicher – ${F.pack.spezial}!` : `Bonus: ${bedingungText(k)}`);
 /* Nächster Sticker / nächstes Päckchen der Unité n: { text, pct, act } */
 function nextInfo(n = S.unit) {
   const plural = k => `${k} ${k === 1 ? 'Lernpunkt' : 'Lernpunkte'}`;
@@ -470,17 +512,17 @@ function nextStkHTML(cls = '', n = S.unit) {
 /* Sticker im Rahmen; Glitzer-Sticker bekommen einen wandernden Lichtstreifen (style.css, Maske = das Bild selbst) */
 const stickerImg = (id, cls = '') => `<span class="stk-wrap ${STICKER[id].art === 'glitzer' ? 'glitzer' : ''} ${cls}" style="--m:url(${img(id)})"><img class="stk" src="${img(id)}" alt="${esc(STICKER[id].de)}"></span>`;
 const newStickersHTML = ids => `<div class="new-stk">${ids.slice(0, 4).map((id, i) => `<button class="new-stk-i ${STICKER[id].art === 'glitzer' ? 'glitzer' : ''}" data-act="sticker" data-id="${id}" style="--i:${i}">
-  ${stickerImg(id)}<span class="stk-t" lang="fr">${esc(STICKER[id].titel)}</span></button>`).join('')}</div>`;
+  ${stickerImg(id)}<span class="stk-t" lang="${F.lang}">${esc(STICKER[id].titel)}</span></button>`).join('')}</div>`;
 /* Panini-Karte: Bild mit Band (Flagge, Kürzel, Aufschrift, Nummer); glitzer/gold mit Folien-Effekt (style.css) */
 const teamColors = s => { const t = TEAM[s.team]; return t ? `--t1:${t.farben[0]};--t2:${t.farben[1] || t.farben[0]}` : '--t1:#2D781B;--t2:#FFC83A'; };
 const cardHTML = (id, cls = '') => {
   const s = STICKER[id];
   return `<span class="pcard ${s.art} ${s.format} ${cls}" style="${teamColors(s)}"><img src="${img(id)}" alt="${esc(s.de)}" loading="lazy">
-    ${s.rolle === 'Capitaine' ? '<svg class="pc-capt" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#FFD23A" stroke="#fff" stroke-width="2"/><text x="12" y="16.6" text-anchor="middle" font-size="14" font-weight="900" fill="#1F2A44">C</text></svg>' : ''}<span class="pc-band">${s.team ? flagHTML(s.team) : '<b class="pc-wm">★</b>'}<span lang="fr">${esc(s.kurz)}</span><i>${NUM[id]}</i></span></span>`;
+    ${['Capitaine', 'Captain'].includes(s.rolle) ? '<svg class="pc-capt" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="#FFD23A" stroke="#fff" stroke-width="2"/><text x="12" y="16.6" text-anchor="middle" font-size="14" font-weight="900" fill="#1F2A44">C</text></svg>' : ''}<span class="pc-band">${s.team ? flagHTML(s.team) : '<b class="pc-wm">★</b>'}<span lang="${F.lang}">${esc(s.kurz)}</span><i>${NUM[id]}</i></span></span>`;
 };
 /* Ein Päckchen als Bild (CSS): klein auf dem Ergebnis-Bildschirm, gross zum Aufreissen */
-const pochetteHTML = (kind = 'normal', cls = '') => `<span class="pochette ${kind === 'special' ? 'special' : ''} ${cls}"><span class="poch-top"></span>
-  <span class="poch-body"><img src="${img('leo_fussball')}" alt=""><b lang="fr">Coupe du monde<br>des grenouilles</b><small>${kind === 'special' ? 'Pochette spéciale' : `Pochette · ${L.PACK_SIZE} stickers`}</small></span></span>`;
+const pochetteHTML = (kind = 'normal', cls = '') => `<span class="pochette ${kind === 'special' ? 'special' : ''} ${F.code} ${cls}"><span class="poch-top"></span>
+  <span class="poch-body"><img src="${img(F.pack.bild)}" alt=""><b lang="${F.lang}">${F.pack.titel}</b><small>${kind === 'special' ? F.pack.spezial : F.pack.normal(L.PACK_SIZE)}</small></span></span>`;
 /* Ausserhalb einer Runde Verdientes (Lernkarten, Memory): kurz als Blatt zeigen */
 function stickerToast() {
   const r = checkStickers();
@@ -503,11 +545,11 @@ function celebrate(r) {
   if (r.stickers.length) return celebrateSticker(r.stickers);
   if (!r.packs.length) return;
   sfx.sticker();
-  leo([{ pause: 200 }, r.packs.includes('special') ? 'leo_champion' : r.packs.includes('punkte') ? 'leo_pochette' : 'leo_pochette_bonus'], true);
+  leo([{ pause: 200 }, r.packs.includes('special') ? FP('champion') : r.packs.includes('punkte') ? FP('pochette') : FP('pochette_bonus')], true);
 }
 function celebrateSticker(ids) {
   sfx.sticker();
-  leo([{ pause: 200 }, ids.some(id => STICKER[id].art === 'glitzer') ? 'leo_sticker_glitzer' : 'leo_sticker'], true);
+  leo([{ pause: 200 }, ids.some(id => STICKER[id].art === 'glitzer') ? FP('sticker_glitzer') : FP('sticker')], true);
 }
 
 /* ------------------------------------------------- Päckchen öffnen (Panini)
@@ -526,7 +568,7 @@ function openPack(n) {
 function tearPack() {
   if (!PK || PK.torn) return;
   const n = PK.n, p = pk(n), cards = unitStickers(n);
-  const ids = PK.kind === 'special' ? L.specialPack(cards, S.stickers) : L.drawPack(cards);
+  const ids = L.drawPack(cards);                  // auch die Pochette spéciale (seit 2026-11-07 nicht mehr alle fehlenden)
   PK.got = L.stick({ have: S.stickers, dup: S.dup }, ids);
   PK.got.filter(g => g.neu).forEach(g => S.neu.push(g.id));
   p.opened++;
@@ -545,8 +587,8 @@ function flipCard(i) {
   const g = PK.got[i], s = STICKER[g.id], el = packRoot.querySelector(`.pk-card[data-i="${i}"]`);
   if (el) el.classList.add('flipped');
   const lines = [];
-  if (s.art === 'gold') { sfx.gold(); if (!reduced()) confetti(60); if (g.neu && voiceOn()) lines.push('leo_or', { pause: 150 }); }
-  else if (s.art === 'glitzer') { sfx.sparkle(); if (el && !reduced()) burst(el, 14); if (g.neu && voiceOn()) lines.push('leo_rare', { pause: 150 }); }
+  if (s.art === 'gold') { sfx.gold(); if (!reduced()) confetti(60); if (g.neu && voiceOn()) lines.push(FP('or'), { pause: 150 }); }
+  else if (s.art === 'glitzer') { sfx.sparkle(); if (el && !reduced()) burst(el, 14); if (g.neu && voiceOn()) lines.push(FP('rare'), { pause: 150 }); }
   else sfx.flip();
   Sound.say(lines.concat([g.id]));
   if (PK.shown.size === PK.got.length) setTimeout(() => { if (PK) { const a = packRoot.querySelector('.pack-after'); if (a) a.innerHTML = packAfterHTML(); } }, 500);
@@ -568,11 +610,11 @@ function renderPack() {
         return `<button class="pk-card ${s.art} ${s.format} ${open ? 'flipped' : ''}" data-act="pack-flip" data-i="${i}" style="--i:${i}" aria-label="${open ? esc(s.titel) : 'Sticker umdrehen'}">
           <span class="pk-in"><span class="pk-back"><img src="icons/icon-192.png" alt=""></span>
           <span class="pk-front">${cardHTML(g.id)}<span class="pk-tags">${g.neu ? '<em class="t-neu">Neu</em>' : '<em class="t-dup">Doppelt</em>'}${s.art === 'gold' ? '<em class="t-gold">★★ Gold</em>' : s.art === 'glitzer' ? '<em class="t-glitzer">★ Glitzer</em>' : ''}</span></span></span>
-          <span class="pk-name" lang="fr">${esc(s.rolle ? s.titel.split(',')[0] : s.titel)}</span></button>`;   // Spieler: nur der Name (Léo sagt den ganzen Titel)
+          <span class="pk-name" lang="${F.lang}">${esc(s.rolle ? s.titel.split(',')[0] : s.titel)}</span></button>`;   // Spieler: nur der Name (Léo sagt den ganzen Titel)
       }).join('')}</div>`;
   packRoot.innerHTML = `<div class="pack-bg"></div><div class="pack-box" role="dialog" aria-modal="true" aria-label="Päckchen">
     <button class="icon-btn pack-x" data-act="pack-close" aria-label="Schliessen">${ICON.close}</button>
-    <h2 class="pack-h">${PK.kind === 'special' ? 'Pochette spéciale!' : PK.torn ? 'Was ist drin?' : 'Ein Päckchen für dich!'}</h2>
+    <h2 class="pack-h">${PK.kind === 'special' ? `${F.pack.spezial}!` : PK.torn ? 'Was ist drin?' : 'Ein Päckchen für dich!'}</h2>
     ${stage}<div class="pack-after">${PK.torn ? packAfterHTML() : ''}</div></div>`;
 }
 function closePack(then) {
@@ -589,7 +631,7 @@ function closePack(then) {
 function checkComplete(n) {
   if (!isPanini(n) || !pageFull(n) || pk(n).complete) return;
   pk(n).complete = true; save();
-  setTimeout(() => { leo('leo_coupe_complete', true); sfx.gold(); if (!reduced()) confetti(80); }, 500);
+  setTimeout(() => { leo(FP('coupe_complete'), true); sfx.gold(); if (!reduced()) confetti(80); }, 500);
 }
 
 /* ------------------------------------------------------ Tauschen bei Léo */
@@ -598,15 +640,15 @@ function tradeHTML(n, gotId) {
   const missing = cards.filter(s => !S.stickers.includes(s.id));
   const dupList = Object.entries(S.dup).filter(([id, k]) => ids.includes(id) && k > 0).sort((a, b) => NUM[a[0]] - NUM[b[0]]);
   const RAR = { normal: '', glitzer: '★ ', gold: '★★ ' };
-  return `<div class="sheet-head"><h2>Tauschen bei Léo</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
+  return `<div class="sheet-head"><h2>Tauschen bei ${F.name}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
   <div class="sheet-body tausch">
-    ${gotId ? `<div class="tausch-got">${cardHTML(gotId, 'big')}<p><b>Eingetauscht und eingeklebt!</b></p></div>` : ''}
+    ${gotId ? `<div class="tausch-got">${cardHTML(gotId, 'big')}<p><b>${F.code === 'en' ? 'Eingetauscht! Er liegt jetzt im Stapel zum Einkleben.' : 'Eingetauscht und eingeklebt!'}</b></p></div>` : ''}
     <p class="tausch-info">Du hast <b>${dups} ${dups === 1 ? 'Doppelten' : 'Doppelte'}</b>. ${missing.length ? `Wähle einen Sticker, der dir fehlt. Preis: normal ${L.TRADE.normal}, ★ Glitzer ${L.TRADE.glitzer}, ★★ Gold ${L.TRADE.gold} Doppelte.` : 'Dir fehlt kein Sticker mehr!'}</p>
     ${missing.length ? `<div class="tausch-grid">${missing.map(s => {
       const cost = L.tradeCost(s), ok = dups >= cost;
       return `<button class="tausch-i ${s.art} ${ok ? '' : 'zu-teuer'}" data-act="trade" data-id="${s.id}" style="${teamColors(s)}">
         <span class="ti-num">${NUM[s.id]}</span><span class="ti-team">${s.team ? flagHTML(s.team) : ''}${s.team || 'WM'}</span>
-        <span class="ti-kurz" lang="fr">${esc(s.kurz)}</span><span class="ti-cost">${RAR[s.art]}${cost} Doppelte</span></button>`;
+        <span class="ti-kurz" lang="${F.lang}">${esc(s.kurz)}</span><span class="ti-cost">${RAR[s.art]}${cost} Doppelte</span></button>`;
     }).join('')}</div>` : ''}
     <h3 class="tausch-h">Deine Doppelten</h3>
     ${dupList.length ? `<div class="dup-list">${dupList.map(([id, k]) => `<button class="dup-i" data-act="sticker" data-id="${id}">${cardHTML(id, 'mini')}<b>×${k}</b></button>`).join('')}</div>` : '<p class="set-note">Noch keine Doppelten. Die bekommst du in den Päckchen.</p>'}
@@ -617,23 +659,58 @@ function doTrade(id, btn) {
   if (!L.trade({ have: S.stickers, dup: S.dup }, s, unitStickers(n).map(x => x.id))) {
     nope(btn);
     const info = document.querySelector('.tausch-info');
-    if (info) info.innerHTML = `Für <b lang="fr">${esc(s.kurz)}</b> brauchst du ${L.tradeCost(s)} Doppelte – du hast ${pageDups(n)}. Öffne weitere Päckchen!`;
+    if (info) info.innerHTML = `Für <b lang="${F.lang}">${esc(s.kurz)}</b> brauchst du ${L.tradeCost(s)} Doppelte – du hast ${pageDups(n)}. Öffne weitere Päckchen!`;
     return;
   }
   S.neu.push(id); save();
   sfx.sticker();
-  leo('leo_echange_ok');
+  leo(FP('echange_ok'));
   Sound.say(id, true);
   openSheet('tausch', tradeHTML(n, id));
   if (view.name === 'album') { const y = window.scrollY; render(); window.scrollTo(0, y); }
   checkComplete(n);
 }
 
+/* ---------------------------------------------- Startseite: Französisch oder Englisch? (seit 2026-11-07)
+   Kommt beim Öffnen der App; der gewählte Teil bleibt für diese Sitzung (Neuladen bleibt im Teil, sessionStorage). */
+const SPRACH_KEY = 'woertlifrosch.sprache';
+/* Wie weit ist man im Teil code? Direkt aus dessen Speicher, ohne ihn zu laden */
+function standVon(code) {
+  const sp = SPRACHEN[code], d = window[sp.daten];
+  let st = null;
+  try { st = JSON.parse(localStorage.getItem(sp.key)); } catch (e) { /* privates Fenster o. Ä. */ }
+  const w = (st && st.w) || {}, aktiv = new Set(d.listen.filter(l => l.aktiv).map(l => l.id));
+  const ws = d.woerter.filter(x => aktiv.has(x.liste));
+  return { sicher: ws.filter(x => w[x.id] && w[x.id].box === L.MAX).length, alle: ws.length };
+}
+function startHTML() {
+  const karte = code => {
+    const sp = SPRACHEN[code], k = standVon(code);
+    return `<button class="sprach-karte" data-act="sprache" data-v="${code}" style="--u:${sp.farbe}">
+      <span class="sk-bild"><img src="${img(`${sp.p}_hallo`)}" alt=""></span>
+      <span class="sk-t">${sp.sprache}</span><span class="sk-s">mit ${sp.name}</span>
+      <span class="progress small"><i style="width:${(100 * k.sicher / Math.max(1, k.alle)).toFixed(1)}%"></i></span>
+      <span class="sk-p">${k.sicher} von ${k.alle} Wörtern sicher</span></button>`;
+  };
+  return `<div class="screen start">
+    <header class="start-kopf"><img src="icons/icon-192.png" alt=""><h1>Wörtli-Frosch</h1></header>
+    <h2 class="start-frage">Willst du Französisch üben oder Englisch üben?</h2>
+    <section class="sprach-wahl">${karte('fr')}${karte('en')}</section>
+    <footer class="foot">6. Klasse · Französisch mit Léo, Englisch mit ${SPRACHEN.en.name} · funktioniert auch ohne Internet</footer>
+  </div>`;
+}
+function spracheWaehlen(code) {
+  setSprache(code);
+  try { sessionStorage.setItem(SPRACH_KEY, F.code); } catch (e) { /* egal */ }
+  nav('home');
+  leo(line.hallo());
+}
+
 /* ------------------------------------------------------------------ Start */
 const MODES = [
   { k: 'karten', t: 'Lernkarten', s: 'Anschauen und anhören', ic: 'cards' },
   { k: 'hoeren', t: 'Hören', s: 'Hören und Bild wählen', ic: 'ear' },
-  { k: 'waehlen', t: 'Wählen', s: 'Deutsch ↔ Französisch', ic: 'choose' },
+  { k: 'waehlen', t: 'Wählen', s: () => `Deutsch ↔ ${F.sprache}`, ic: 'choose' },
   { k: 'schreiben', t: 'Schreiben', s: 'Richtig schreiben', ic: 'pencil' },
   { k: 'memory', t: 'Memory', s: 'Bild und Wort finden', ic: 'memory' },
   { k: 'test', t: 'Wörtlitest', s: 'Wie in der Schule', ic: 'test' },
@@ -644,42 +721,42 @@ function sessionPreview() {
   return `${tasks.length} Aufgaben${neu ? ` · ${neu === 1 ? '1 neues Wort' : `${neu} neue Wörter`}` : ''}`;
 }
 function homeHTML() {
-  const u = UNIT[S.unit], ws = words(), g = sicher(ws), nm = name();
-  const hasPlus = u.lists.some(l => l.aktiv && isPlus(l)) && u.lists.some(l => l.aktiv && !isPlus(l));
+  const u = UNIT[S.unit], ws = words(), g = sicher(ws), nm = name(), wahl = teilWahl(u);
   return `<div class="screen home">
     <header class="bar">
-      <button class="brand" data-act="hello" aria-label="Wörtli-Frosch – Léo sagt Hallo"><img src="icons/icon-192.png" alt=""><span>Wörtli-Frosch</span></button>
+      <button class="brand" data-act="hello" aria-label="Wörtli-Frosch – ${F.name} sagt Hallo"><img src="${F.code === 'fr' ? 'icons/icon-192.png' : img(FP('kopf'))}" alt=""><span>Wörtli-Frosch</span></button>
       <div class="bar-right">
-        <button class="pill ${S.neu.length || ACTIVE.some(x => isPanini(x.n) && packsPending(x.n) > 0) ? 'has-new' : ''}" data-act="album" aria-label="Stickeralbum: ${S.stickers.length} von ${D.stickers.length} Stickern">${ICON.sticker}<span class="pill-t">Album</span><b>${S.stickers.length}/${D.stickers.length}</b></button>
+        <button class="pill lang-pill" data-act="sprachen" aria-label="${F.sprache} – andere Sprache wählen">${ICON.back}<span class="pill-t">Sprache</span><b>${F.code.toUpperCase()}</b></button>
+        <button class="pill ${(F.code === 'en' ? stapel().length : S.neu.length) || ACTIVE.some(x => isPanini(x.n) && packsPending(x.n) > 0) ? 'has-new' : ''}" data-act="album" aria-label="Stickeralbum: ${(F.code === 'en' ? S.klebt : S.stickers).length} von ${D.stickers.length} Stickern">${ICON.sticker}<span class="pill-t">${F.code === 'en' ? 'Heft' : 'Album'}</span><b>${(F.code === 'en' ? S.klebt : S.stickers).length}/${D.stickers.length}</b></button>
         <button class="icon-btn" data-act="settings" aria-label="Einstellungen">${ICON.gear}</button>
       </div>
     </header>
     <section class="hero" style="${unitColors(u)}">
-      <button class="hero-leo" data-act="leo" aria-label="Léo antippen"><img src="${img('leo_hallo')}" alt="Léo, der Frosch, winkt"></button>
+      <button class="hero-leo" data-act="leo" aria-label="${F.name} antippen"><img src="${img(FP('hallo'))}" alt="${F.name}, der Frosch, winkt"></button>
       <div class="bubble">
-        <p class="bubble-hi" lang="fr">Salut${nm ? ` ${esc(nm)}` : ''} ! Moi, c'est Léo.</p>
+        <p class="bubble-hi" lang="${F.lang}">${esc(F.hallo(nm))}</p>
         <p>Wir üben <b>${u.titel}</b> · ${esc(selName())}</p>
-        <button class="btn primary big" data-act="start-leo"><span><b>Üben mit Léo</b><small>${sessionPreview()}</small></span>${ICON.next}</button>
+        <button class="btn primary big" data-act="start-leo"><span><b>Üben mit ${F.name}</b><small>${sessionPreview()}</small></span>${ICON.next}</button>
         ${nextStkHTML()}
       </div>
     </section>
     <section class="unit-head" style="--u:${u.farbe}">
       <h2>${u.titel} <span>${esc(u.thema)}</span></h2>
-      ${hasPlus ? `<div class="seg teil" role="radiogroup" aria-label="Wortliste">${TEILE.map(([v, l]) => `<button role="radio" aria-checked="${S.teil === v}" data-act="teil" data-v="${v}">${l}</button>`).join('')}</div>` : ''}
+      ${wahl.length ? `<div class="seg teil ${wahl.length > 3 ? 'viele' : ''}" role="radiogroup" aria-label="Wortliste">${wahl.map(([v, l]) => `<button role="radio" aria-checked="${S.teil === v}" data-act="teil" data-v="${v}">${l}</button>`).join('')}</div>` : ''}
       <div class="progress" aria-label="${g} von ${ws.length} Wörtern sicher"><i style="width:${(100 * g / ws.length).toFixed(1)}%"></i></div>
       <p class="unit-sub">${g} von ${ws.length} Wörtern sicher · ${ws.filter(w => st(w.id).box > 0).length} angefangen</p>
     </section>
     <section class="modes">
-      ${MODES.map(m => `<button class="mode" data-act="mode" data-mode="${m.k}"><span class="mode-ic">${ICON[m.ic]}</span><span class="mode-t">${m.t}</span><span class="mode-s">${m.s}</span></button>`).join('')}
+      ${MODES.map(m => `<button class="mode" data-act="mode" data-mode="${m.k}"><span class="mode-ic">${ICON[m.ic]}</span><span class="mode-t">${m.t}</span><span class="mode-s">${typeof m.s === 'function' ? m.s() : m.s}</span></button>`).join('')}
     </section>
-    ${buchKnopfHTML()}
+    ${F.code === 'fr' ? buchKnopfHTML() : ''}
     ${UNITS.length > 1 ? `<h3 class="more-title">Weitere Units</h3>
     <section class="units">
       ${UNITS.filter(x => x.n !== S.unit).map(x => `<button class="unit-tile ${x.aktiv ? '' : 'soon'}" style="--u:${x.farbe}" data-act="unit" data-unit="${x.n}" ${x.aktiv ? '' : 'disabled'}>
         <span class="unit-n">${x.titel}</span><span class="unit-t">${esc(x.thema)}</span><span class="unit-s">${x.aktiv ? `${sicher(listWords(x.lists.map(l => l.id)))} von ${listWords(x.lists.map(l => l.id)).length} sicher` : `${ICON.lock} kommt bald`}</span></button>`).join('')}
     </section>` : ''}
     <div id="install-home">${installHomeHTML()}</div>
-    <footer class="foot">Französisch 6. Klasse · Wörter aus dem Schulbuch · funktioniert auch ohne Internet</footer>
+    <footer class="foot">${F.fuss}</footer>
   </div>`;
 }
 
@@ -720,17 +797,17 @@ function refreshInstall() {
 
 /* --------------------------------------------------------------- Übungen
    Q.mode: { typ: 'leo' | 'drill' | 'test', drill } – Q.list: [{kind, id}] aus lernen.js */
-const MODE_LINE = { hoeren: 'leo_modus_hoeren', waehlen: 'leo_modus_waehlen', schreiben: 'leo_modus_schreiben', test: 'leo_modus_test' };
+const MODE_LINE = { hoeren: 'modus_hoeren', waehlen: 'modus_waehlen', schreiben: 'modus_schreiben', test: 'modus_test' };
 function startTasks(mode, list, pool) {
   S.round++; save();
   Q = { mode, list, pool, i: 0, tries: 0, hinted: false, input: '', placed: [], streak: 0, maxStreak: 0, results: [], before: {}, locked: false, extra: 0 };
   pool.forEach(w => { Q.before[w.id] = st(w.id).box; });
   Q.ptsBefore = allPoints();
   Q.packBefore = isPanini(S.unit) ? packPoints(S.unit) : 0;
-  Sound.preload([...new Set(list.map(t => t.id))].concat(['leo_lob_01', 'leo_lob_02', 'leo_lob_03', 'leo_fast_01', 'leo_fast_02', 'leo_loesung']));
+  Sound.preload([...new Set(list.map(t => t.id))].concat(['lob_01', 'lob_02', 'lob_03', 'fast_01', 'fast_02', 'loesung'].map(FP)));
   [...new Set(list.map(t => t.id))].forEach(id => { new Image().src = img(id); });
   nav('task');
-  const intro = mode.typ === 'test' ? 'leo_modus_test' : mode.typ === 'drill' ? MODE_LINE[mode.drill] : line.los();
+  const intro = mode.typ === 'test' ? FP('modus_test') : mode.typ === 'drill' ? FP(MODE_LINE[mode.drill]) : line.los();
   leo([intro, { pause: 250 }]);
   autoSpeak(true);
 }
@@ -747,12 +824,12 @@ function startTest() {
 const cur = () => Q.list[Q.i];
 
 function taskShellHTML() {
-  const title = Q.mode.typ === 'test' ? 'Wörtlitest' : Q.mode.typ === 'leo' ? 'Üben mit Léo' : (MODES.find(m => m.k === Q.mode.drill) || {}).t;
+  const title = Q.mode.typ === 'test' ? 'Wörtlitest' : Q.mode.typ === 'leo' ? `Üben mit ${F.name}` : (MODES.find(m => m.k === Q.mode.drill) || {}).t;
   return `<div class="screen task" id="task">
     <header class="qbar">
       <button class="icon-btn" data-act="quit" aria-label="Beenden">${ICON.close}</button>
       <div class="qprog"><span class="qtitle">${title}</span><div class="pads" id="pads"></div></div>
-      <span class="qleo"><img id="leo" src="${img('leo_denkt')}" alt=""></span>
+      <span class="qleo"><img id="leo" src="${img(FP('denkt'))}" alt=""></span>
     </header>
     <section class="qcard" id="qcard"></section>
     <div class="qfoot" id="qfoot"></div>
@@ -763,7 +840,7 @@ function setLeo(pose) {
   if (!el) return;
   el.src = img(pose);
   el.classList.remove('bounce', 'wobble'); void el.offsetWidth;
-  if (!reduced()) el.classList.add(pose === 'leo_jubel' ? 'bounce' : pose === 'leo_mut' ? 'wobble' : 'x');
+  if (!reduced()) el.classList.add(pose === FP('jubel') ? 'bounce' : pose === FP('mut') ? 'wobble' : 'x');
 }
 function updatePads() {
   const el = document.getElementById('pads');
@@ -788,7 +865,7 @@ const picHTML = (id, cls = '') => `<img class="pic ${cls}" src="${img(id)}" alt=
 function showTask() {
   const t = cur(), w = WORD[t.id], card = document.getElementById('qcard'), foot = document.getElementById('qfoot');
   Q.tries = 0; Q.hinted = false; Q.input = ''; Q.placed = []; Q.locked = false;
-  setLeo('leo_denkt');
+  setLeo(FP('denkt'));
   updatePads();
   card.className = `qcard k-${t.kind}`;
   card.dataset.id = t.id;                                     // für die Browser-Tests (Scripts/browser.mjs)
@@ -796,7 +873,7 @@ function showTask() {
   foot.innerHTML = '';
   if (t.kind === 'karte') {
     card.innerHTML = `<p class="ask">Neues Wort</p>${picHTML(w.id, 'big')}
-      <p class="fr" lang="fr">${frHTML(w)}</p>${soundBtns(w.id, w.typ === 'wort')}<p class="de">${esc(w.de)}</p>`;
+      <p class="fr" lang="${F.lang}">${frHTML(w)}</p>${soundBtns(w.id, w.typ === 'wort')}<p class="de">${esc(w.de)}</p>`;
     foot.innerHTML = `<button class="btn primary big" data-act="next" id="next-btn"><span><b>Weiter</b></span>${ICON.next}</button>`;
     return;
   }
@@ -809,14 +886,14 @@ function showTask() {
   }
   if (t.kind === 'waehlen_fr') {
     const ch = L.choices(Q.pool, w);
-    card.innerHTML = `<p class="ask">Wie heisst das auf Französisch?</p>${picHTML(w.id)}<p class="de big">${esc(w.de)}</p>
+    card.innerHTML = `<p class="ask">Wie heisst das auf ${F.sprache}?</p>${picHTML(w.id)}<p class="de big">${esc(w.de)}</p>
       <div class="fb" id="fb" aria-live="polite"></div>
-      <div class="grid4 words">${ch.map(c => `<button class="opt word-opt" data-act="choice" data-id="${c.id}" lang="fr">${show(c.fr)}</button>`).join('')}</div>`;
+      <div class="grid4 words">${ch.map(c => `<button class="opt word-opt" data-act="choice" data-id="${c.id}" lang="${F.lang}">${show(c.fr)}</button>`).join('')}</div>`;
     return;
   }
   if (t.kind === 'waehlen_de') {
     const ch = L.choices(Q.pool, w);
-    card.innerHTML = `<p class="ask">Was heisst das auf Deutsch?</p><p class="fr" lang="fr">${frHTML(w)}</p>${soundBtns(w.id, false)}
+    card.innerHTML = `<p class="ask">Was heisst das auf Deutsch?</p><p class="fr" lang="${F.lang}">${frHTML(w)}</p>${soundBtns(w.id, false)}
       <div class="fb" id="fb" aria-live="polite"></div>
       <div class="grid4 words de-opts">${ch.map(c => `<button class="opt word-opt" data-act="choice" data-id="${c.id}">${esc(c.de)}</button>`).join('')}</div>`;
     return;
@@ -824,7 +901,7 @@ function showTask() {
   const isTest = t.kind === 'test';
   const usePuzzle = t.kind === 'puzzle' || (isTest && w.typ === 'satz');
   // Bild, deutsches Wort und Ton nebeneinander, damit Antwort und Tastatur auf denselben Bildschirm passen
-  card.innerHTML = `<p class="ask">${isTest ? 'Schreib das französische Wort' : 'Schreib es auf Französisch'}</p>
+  card.innerHTML = `<p class="ask">${isTest ? `Schreib das ${F.code === 'fr' ? 'französische' : 'englische'} Wort` : `Schreib es auf ${F.sprache}`}</p>
     <div class="prompt">${isTest ? '' : picHTML(w.id, 'side')}<div class="prompt-t"><p class="de big">${esc(w.de)}${w.hinweis ? ` <small class="hint">${esc(w.hinweis)}</small>` : ''}</p>${isTest ? '' : soundBtns(w.id, false)}</div></div>
     <div class="answer" id="answer"></div><div class="fb" id="fb" aria-live="polite"></div>`;
   if (usePuzzle) {
@@ -858,15 +935,15 @@ function renderPuzzle(state = '') {
   const p = Q.puzzle, a = document.getElementById('answer'), tiles = state !== 'solution';
   if (p.typ === 'b') {
     let k = 0;
-    a.innerHTML = `<div class="slots ${state}" lang="fr" style="--n:${Math.max(...p.groups.map(g => g.length))}">${p.groups.map(g => `<span class="slot-group">${g.map(fixed => {
+    a.innerHTML = `<div class="slots ${state}" lang="${F.lang}" style="--n:${Math.max(...p.groups.map(g => g.length))}">${p.groups.map(g => `<span class="slot-group">${g.map(fixed => {
       if (fixed != null) return `<span class="slot fixed">${esc(fixed)}</span>`;
       const i = k++, pl = Q.placed[i];
       return `<button class="slot ${pl != null ? 'filled' : ''} ${state && Q.marks ? Q.marks[i] || '' : ''}" data-act="unplace" data-i="${i}">${pl != null ? p.tiles[pl] : ''}</button>`;
     }).join('')}</span>`).join('')}</div>
-    ${tiles ? `<div class="tiles" lang="fr">${p.tiles.map((c, i) => `<button class="tile" data-act="place" data-i="${i}" ${Q.placed.includes(i) ? 'disabled' : ''}>${c}</button>`).join('')}</div>` : ''}`;
+    ${tiles ? `<div class="tiles" lang="${F.lang}">${p.tiles.map((c, i) => `<button class="tile" data-act="place" data-i="${i}" ${Q.placed.includes(i) ? 'disabled' : ''}>${c}</button>`).join('')}</div>` : ''}`;
   } else {
-    a.innerHTML = `<div class="line ${state}" lang="fr">${Q.placed.length ? Q.placed.map((ti, k) => `<button class="wtile placed ${state && Q.marks ? Q.marks[k] : ''}" data-act="unplace" data-i="${k}">${esc(p.tiles[ti].t)}</button>`).join('') : '<span class="line-hint">Tippe die Wörter in der richtigen Reihenfolge an</span>'}</div>
-    ${tiles ? `<div class="tiles" lang="fr">${p.tiles.map((x, i) => `<button class="wtile" data-act="place" data-i="${i}" ${Q.placed.includes(i) ? 'disabled' : ''}>${esc(x.t)}</button>`).join('')}</div>` : ''}`;
+    a.innerHTML = `<div class="line ${state}" lang="${F.lang}">${Q.placed.length ? Q.placed.map((ti, k) => `<button class="wtile placed ${state && Q.marks ? Q.marks[k] : ''}" data-act="unplace" data-i="${k}">${esc(p.tiles[ti].t)}</button>`).join('') : '<span class="line-hint">Tippe die Wörter in der richtigen Reihenfolge an</span>'}</div>
+    ${tiles ? `<div class="tiles" lang="${F.lang}">${p.tiles.map((x, i) => `<button class="wtile" data-act="place" data-i="${i}" ${Q.placed.includes(i) ? 'disabled' : ''}>${esc(x.t)}</button>`).join('')}</div>` : ''}`;
   }
 }
 function place(i) {
@@ -911,18 +988,18 @@ function solveOrder(p, want) {
 }
 
 /* ---- Tippen (eigene Tastatur mit Akzenten, auch PC-Tastatur) ---- */
-const KEYS = ['éèêàâçîôùû', 'qwertzuiop', "asdfghjkl'", 'yxcvbnm-/'];
+const KEYS = ['qwertzuiop', "asdfghjkl'", 'yxcvbnm-/'];         // dazu oben die Akzent-Reihe der Sprache (F.tasten)
 const DIGITS = '1234567890';
 const TYPEABLE = /^[a-zàâäçéèêëîïôöùûüÿœæ0-9'\-\/ ]$/;
 const ACCENT_MSG = 'Fast! Achte auf die Akzente (é, è, à …).';
 function renderTyping(state = '') {
   const a = document.getElementById('answer');
-  a.innerHTML = `<div class="typed ${state}" lang="fr" id="typed">${Q.input ? esc(Q.input) : ''}<i class="caret"></i></div>`;
+  a.innerHTML = `<div class="typed ${state}" lang="${F.lang}" id="typed">${Q.input ? esc(Q.input) : ''}<i class="caret"></i></div>`;
   const foot = document.getElementById('qfoot');
   if (!foot.querySelector('.kbd')) {
     const w = WORD[cur().id];
-    const rows = (/[0-9]/.test(w.antworten.join('')) ? [DIGITS] : []).concat(KEYS);
-    foot.innerHTML = `<div class="kbd" lang="fr">${rows.map((r, ri) => `<div class="krow ${ri === rows.length - KEYS.length ? 'acc' : ''}">${r.split('').map(c => `<button class="k" data-act="key" data-v="${c}">${c}</button>`).join('')}${ri === rows.length - 1 ? `<button class="k fn" data-act="bksp" aria-label="Löschen">${ICON.del}</button>` : ''}</div>`).join('')}
+    const rows = (/[0-9]/.test(w.antworten.join('')) ? [DIGITS] : []).concat(F.tasten ? [F.tasten] : [], KEYS);
+    foot.innerHTML = `<div class="kbd" lang="${F.lang}">${rows.map((r, ri) => `<div class="krow ${r === F.tasten ? 'acc' : ''}">${r.split('').map(c => `<button class="k" data-act="key" data-v="${c}">${c}</button>`).join('')}${ri === rows.length - 1 ? `<button class="k fn" data-act="bksp" aria-label="Löschen">${ICON.del}</button>` : ''}</div>`).join('')}
       <div class="krow"><button class="k space" data-act="key" data-v=" ">Leerschlag</button><button class="k ok" data-act="ok" aria-label="Fertig">${ICON.check}</button></div></div>`;
   }
 }
@@ -946,8 +1023,8 @@ function submitTyping() {
   renderTyping('wrong');
   wrong(t, () => {
     const d = L.diff(near.answer, Q.input);
-    document.getElementById('answer').innerHTML = `<div class="typed diff" lang="fr">${d.map(x => `<span class="d-${x.s}">${x.c === ' ' ? '&nbsp;' : esc(x.c)}</span>`).join('')}</div>
-      <p class="solution" lang="fr">${show(near.answer)}</p>`;
+    document.getElementById('answer').innerHTML = `<div class="typed diff" lang="${F.lang}">${d.map(x => `<span class="d-${x.s}">${x.c === ' ' ? '&nbsp;' : esc(x.c)}</span>`).join('')}</div>
+      <p class="solution" lang="${F.lang}">${show(near.answer)}</p>`;
   }, () => { renderTyping(); }, accents ? ACCENT_MSG : near.dist === 1 ? 'Fast! Nur ein Buchstabe stimmt nicht.' : near.dist === 2 ? 'Fast! Zwei Buchstaben stimmen nicht.' : null, accents);
 }
 
@@ -959,11 +1036,11 @@ function right(t) {
   record(t, first ? 'first' : 'second');
   Q.streak = first ? Q.streak + 1 : 0;
   Q.maxStreak = Math.max(Q.maxStreak, Q.streak);
-  setLeo('leo_jubel');
+  setLeo(FP('jubel'));
   sfx.right(Q.streak);
   const fb = document.getElementById('fb');
-  const serie = { 3: 'leo_serie_3', 5: 'leo_serie_5', 10: 'leo_serie_10' }[Q.streak];
-  if (fb) { fb.className = 'fb good'; fb.textContent = serie ? `${Q.streak} richtig hintereinander!` : ['Super!', 'Bravo !', 'Génial !', 'Richtig!'][Math.floor(Math.random() * 4)]; }
+  const serie = { 3: FP('serie_3'), 5: FP('serie_5'), 10: FP('serie_10') }[Q.streak];
+  if (fb) { fb.className = 'fb good'; fb.textContent = serie ? `${Q.streak} richtig hintereinander!` : F.lob[Math.floor(Math.random() * F.lob.length)]; }
   if (!reduced()) burst(document.querySelector('#qcard .right, #answer') || document.getElementById('qcard'), 10);
   if (t.kind === 'test') { timer = setTimeout(advance, 600); return; }
   // Das richtige Wort nochmals hören (ausser es wurde gerade vorgelesen), dann Lob
@@ -989,19 +1066,19 @@ function wrong(t, solve, retry, msg, accents) {
   }
   if (Q.tries === 1) {
     Q.locked = true;
-    setLeo('leo_mut');
+    setLeo(FP('mut'));
     if (fb) { fb.className = 'fb soft'; fb.textContent = msg || 'Nicht ganz. Versuch es nochmal!'; }
-    leo(accents ? 'leo_akzent' : line.fast());
+    leo(accents ? FP('akzent') : line.fast());
     setTimeout(() => { if (!Q || cur() !== t) return; Q.locked = false; if (retry) retry(); }, 1000);
     return;
   }
   Q.locked = true;
   Q.results[Q.i] = { first: false, id: t.id, kind: t.kind };
   record(t, 'wrong');
-  setLeo('leo_mut');
+  setLeo(FP('mut'));
   if (solve) solve();
   if (fb) { fb.className = 'fb soft'; fb.innerHTML = 'So heisst es richtig:'; }
-  Sound.say([...(voiceOn() ? ['leo_loesung'] : []), t.id]);
+  Sound.say([...(voiceOn() ? [FP('loesung')] : []), t.id]);
   // später in der Runde nochmals (höchstens 3 Wiederholungen)
   if (!t.repeat && Q.extra < 3 && Q.mode.typ !== 'test') { Q.list.push(Object.assign({}, t, { repeat: true, kind: t.kind === 'tippen' ? L.spellKind(WORD[t.id], 3, 'auto') : t.kind })); Q.extra++; }
   document.getElementById('qfoot').innerHTML = `<button class="btn primary big" data-act="next" id="next-btn"><span><b>Weiter</b></span>${ICON.next}</button>`;
@@ -1046,9 +1123,9 @@ function finish() {
   nav('result', { res });
   sfx.done();
   if (!reduced()) confetti(res.total && firstRight === res.total ? 70 : 40);
-  leo([res.total && firstRight === res.total ? 'leo_perfekt' : line.fertig(), { pause: 300 }]);
+  leo([res.total && firstRight === res.total ? FP('perfekt') : line.fertig(), { pause: 300 }]);
   if (got.stickers.length || got.packs.length) setTimeout(() => celebrate(got), 900);
-  else if (res.mode.typ === 'test' && res.mistakes.length) leo('leo_test_ueben', true);
+  else if (res.mode.typ === 'test' && res.mistakes.length) leo(FP('test_ueben'), true);
 }
 function resultHTML(res) {
   const ws = words(), g = sicher(ws);
@@ -1058,20 +1135,20 @@ function resultHTML(res) {
   const again = res.mode.typ === 'leo' ? 'start-leo' : 'mode';
   const showPack = !!(res.packs && res.packs.length && packsPending(paniniUnit()) > 0);   // Päckchen, die noch zu sind
   return `<div class="screen result">
-    <div class="res-top"><img class="res-leo" src="${img('leo_jubel')}" alt="Léo jubelt">
+    <div class="res-top"><img class="res-leo" src="${img(FP('jubel'))}" alt="${F.name} jubelt">
       <div class="res-text"><h1>${msg}</h1>
         ${res.total ? `<p class="res-count"><b>${res.firstRight}</b> von ${res.total} ${isTest ? 'richtig geschrieben' : 'beim ersten Mal richtig'}</p>` : ''}
-        ${isTest ? `<p class="res-note">${res.total ? Math.round(100 * pct) : 0} % – ${pct >= 0.9 ? 'bereit für den Test in der Schule!' : pct >= 0.7 ? 'fast bereit. Übe die Wörter unten nochmals.' : 'übe die Wörter unten mit Léo, dann nochmals testen.'}</p>` : ''}
+        ${isTest ? `<p class="res-note">${res.total ? Math.round(100 * pct) : 0} % – ${pct >= 0.9 ? 'bereit für den Test in der Schule!' : pct >= 0.7 ? 'fast bereit. Übe die Wörter unten nochmals.' : `übe die Wörter unten mit ${F.name}, dann nochmals testen.`}</p>` : ''}
       </div></div>
     ${res.stickers.length ? `<section class="res-stk"><h2>${res.stickers.length === 1 ? 'Neuer Sticker!' : `${res.stickers.length} neue Sticker!`}</h2>${newStickersHTML(res.stickers)}</section>` : ''}
     ${showPack ? `<section class="res-stk res-pack"><h2>${res.packs.length === 1 ? 'Neues Päckchen!' : `${res.packs.length} neue Päckchen!`}</h2>${packsGotHTML(res.packs)}</section>` : ''}
     ${res.mistakes.length ? `<section class="mistakes"><h2>Diese Wörter nochmals üben</h2>
       ${res.mistakes.map(m => { const w = WORD[m.id]; return `<div class="mis">${picHTML(w.id, 'mini')}<div><p class="de">${esc(w.de)}</p>
-        <p class="fr" lang="fr">${frHTML(w)}</p>${m.answer ? `<p class="yours" lang="fr">Deine Antwort: <s>${show(m.answer)}</s></p>` : ''}</div>
+        <p class="fr" lang="${F.lang}">${frHTML(w)}</p>${m.answer ? `<p class="yours" lang="${F.lang}">Deine Antwort: <s>${show(m.answer)}</s></p>` : ''}</div>
         <button class="snd-btn" data-act="say" data-id="${w.id}" aria-label="Anhören">${ICON.speaker}</button></div>`; }).join('')}
       <button class="btn primary" data-act="drill-mistakes">${ICON.pencil}<span>Diese ${res.mistakes.length} Wörter üben</span></button></section>` : ''}
     <section class="grow">
-      <div class="grow-row">${res.grew.slice(0, 12).map(id => `<span class="grow-w">${levelHTML(st(id).box)}<span lang="fr">${show(WORD[id].fr)}</span></span>`).join('')}</div>
+      <div class="grow-row">${res.grew.slice(0, 12).map(id => `<span class="grow-w">${levelHTML(st(id).box)}<span lang="${F.lang}">${show(WORD[id].fr)}</span></span>`).join('')}</div>
       <p>${res.gained > 0 ? `<b>+${res.gained} ${res.gained === 1 ? 'Lernpunkt' : 'Lernpunkte'}.</b> ` : ''}${res.packGained > 0 ? `<b>+${res.packGained} ${res.packGained === 1 ? 'Punkt' : 'Punkte'} fürs Album.</b> ` : ''}${res.newSafe.length ? `${res.newSafe.length} ${res.newSafe.length === 1 ? 'Wort sitzt' : 'Wörter sitzen'} jetzt sicher. ` : ''}${g} von ${ws.length} Wörtern sicher.</p>
       ${showPack ? '' : nextStkHTML('wide')}
     </section>
@@ -1092,9 +1169,9 @@ function kartenHTML() {
     <header class="bar"><button class="icon-btn" data-act="home" aria-label="Zurück">${ICON.back}</button><h1 class="bar-title">Lernkarten</h1>
       <span class="count">${karteI + 1}/${ws.length}</span><button class="icon-btn" data-act="liste" aria-label="Alle Wörter als Liste">${ICON.list}</button></header>
     <section class="flash" style="--u:${UNIT[S.unit].farbe}">
-      <p class="flash-lz">${esc(D.listen.find(l => l.id === w.liste).teil)} · Lernziel ${esc(w.lz)}</p>
+      <p class="flash-lz">${esc(D.listen.find(l => l.id === w.liste).teil)}${w.lz ? ` · Lernziel ${esc(w.lz)}` : ''}</p>
       ${picHTML(w.id, 'big')}
-      <p class="fr" lang="fr">${frHTML(w)}</p>${soundBtns(w.id, w.typ === 'wort')}<p class="de">${esc(w.de)}</p>
+      <p class="fr" lang="${F.lang}">${frHTML(w)}</p>${soundBtns(w.id, w.typ === 'wort')}<p class="de">${esc(w.de)}</p>
       <p class="lvl">${levelHTML(st(w.id).box)}<span>${LEVEL[st(w.id).box]}</span></p>
     </section>
     <div class="flash-nav">
@@ -1113,11 +1190,11 @@ function listeHTML() {
   let last = '';
   return `<div class="sheet-head"><h2>Alle Wörter · ${UNIT[S.unit].titel}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
   <div class="sheet-body liste">${ws.map((w, i) => {
-    const l = D.listen.find(x => x.id === w.liste), head = `${l.teil} · Lernziel ${w.lz}`;
+    const l = D.listen.find(x => x.id === w.liste), head = w.lz ? `${l.teil} · Lernziel ${w.lz}` : l.teil;
     const h = head !== last ? `<h3 class="li-h">${esc(head)}</h3>` : '';
     last = head;
     return `${h}<div class="li">${levelHTML(st(w.id).box, 'li-lvl')}
-    <button class="li-main" data-act="karte-go" data-i="${i}"><span class="fr" lang="fr">${frHTML(w)}</span><span class="de">${esc(w.de)}</span></button>
+    <button class="li-main" data-act="karte-go" data-i="${i}"><span class="fr" lang="${F.lang}">${frHTML(w)}</span><span class="de">${esc(w.de)}</span></button>
     <button class="snd-btn" data-act="say" data-id="${w.id}" aria-label="Anhören">${ICON.speaker}</button></div>`;
   }).join('')}</div>`;
 }
@@ -1129,7 +1206,7 @@ function startMemory() {
   deck.forEach(c => { new Image().src = img(c.id); });
   Sound.preload(deck.map(c => c.id));
   nav('memory');
-  leo('leo_modus_memory');
+  leo(FP('modus_memory'));
 }
 function memoryHTML() {
   return `<div class="screen memory">
@@ -1138,7 +1215,7 @@ function memoryHTML() {
     <p class="mem-hint">Finde zu jedem Bild das französische Wort.</p>
     <section class="mem-grid">${Q.deck.map((c, i) => `<button class="mcard ${Q.found.has(c.id) ? 'found open' : Q.open.includes(i) ? 'open' : ''}" data-act="flip" data-i="${i}" aria-label="Karte ${i + 1}">
       <span class="mback"><img src="icons/icon-192.png" alt=""></span>
-      <span class="mfront">${c.side === 'bild' ? `<img src="${img(c.id)}" alt="">` : `<b lang="fr">${show(WORD[c.id].fr)}</b>`}</span></button>`).join('')}</section>
+      <span class="mfront">${c.side === 'bild' ? `<img src="${img(c.id)}" alt="">` : `<b lang="${F.lang}">${show(WORD[c.id].fr)}</b>`}</span></button>`).join('')}</section>
   </div>`;
 }
 function flip(i) {
@@ -1163,9 +1240,9 @@ function flip(i) {
     setTimeout(() => { sfx.right(Q.found.size); if (c.side !== 'wort') sayWord(a.id); }, 250);
     if (Q.found.size === 6) {
       const got = checkStickers({ unit: S.unit, memory9: Q.moves <= 9 });
-      setTimeout(() => { sfx.done(); if (!reduced()) confetti(50); leo('leo_memory_fertig'); }, 900);
+      setTimeout(() => { sfx.done(); if (!reduced()) confetti(50); leo(FP('memory_fertig')); }, 900);
       setTimeout(() => { if (Q && Q.memory) { openSheet('mem-done', memDoneHTML(got)); celebrate(got); } }, 1600);
-    } else leo([{ pause: 600 }, 'leo_memory_paar'], true);
+    } else leo([{ pause: 600 }, FP('memory_paar')], true);
     return;
   }
   Q.locked = true;
@@ -1176,7 +1253,7 @@ function flip(i) {
   }, 1300);
 }
 const memDoneHTML = got => `<div class="sheet-head"><h2>Alle Paare gefunden!</h2></div><div class="sheet-body center">
-  ${got.stickers.length ? newStickersHTML(got.stickers) : got.packs.length ? packsGotHTML(got.packs) : `<img class="sheet-leo" src="${img('leo_jubel')}" alt="">`}<p class="confirm-text">Du hast ${Q ? Q.moves : ''} Züge gebraucht.</p>
+  ${got.stickers.length ? newStickersHTML(got.stickers) : got.packs.length ? packsGotHTML(got.packs) : `<img class="sheet-leo" src="${img(FP('jubel'))}" alt="">`}<p class="confirm-text">Du hast ${Q ? Q.moves : ''} Züge gebraucht.</p>
   <div class="confirm-actions"><button class="btn" data-act="home">Übersicht</button><button class="btn primary" data-act="mode" data-mode="memory">${ICON.again}<span>Nochmal</span></button></div></div>`;
 
 /* --------------------------------------------------------- Stickeralbum */
@@ -1199,12 +1276,12 @@ function leoPageHTML(n) {
   const have = new Set(S.stickers), neu = new Set(S.neu);
   const slot = (s, i) => have.has(s.id)
     ? `<button class="slot-stk got ${s.art === 'glitzer' ? 'glitzer' : ''} ${neu.has(s.id) ? 'is-new' : ''}" data-act="sticker" data-id="${s.id}" aria-label="${esc(s.titel)}">
-        ${stickerImg(s.id)}<span class="stk-t" lang="fr">${esc(s.titel)}</span>${neu.has(s.id) ? '<em>Neu</em>' : ''}</button>`
+        ${stickerImg(s.id)}<span class="stk-t" lang="${F.lang}">${esc(s.titel)}</span>${neu.has(s.id) ? '<em>Neu</em>' : ''}</button>`
     : `<div class="slot-stk empty ${s.art === 'glitzer' ? 'glitzer' : ''}"><span class="stk-n">${s.art === 'glitzer' ? ICON.star : i + 1}</span>
         <span class="stk-t">${s.art === 'glitzer' ? esc(bedingungText(s.bedingung)) : '?'}</span></div>`;
   const normal = unitStickers(n, 'normal'), glitzer = unitStickers(n, 'glitzer');
   const full = normal.concat(glitzer).every(s => have.has(s.id));
-  return `<section class="album-top"><img class="album-leo" src="${img(full ? 'leo_jubel' : 'leo_cool')}" alt="Léo">
+  return `<section class="album-top"><img class="album-leo" src="${img(full ? FP('jubel') : FP('cool'))}" alt="Léo">
       <div><p class="album-intro">Für alle ${L.PER_STICKER} Lernpunkte in ${UNIT[n].titel} bekommst du einen neuen Sticker. Jedes Wort bringt bis zu 5 Lernpunkte – je besser du es kannst, desto mehr. Glitzer-Sticker gibt es für besondere Leistungen.</p>
       ${nextStkHTML('static', n)}
       <p class="album-pts">${unitPoints(n)} Lernpunkte in ${UNIT[n].titel}</p></div></section>
@@ -1221,14 +1298,14 @@ function paniniPageHTML(n) {
   const dups = pageDups(n), cheapest = Math.min(...page.filter(s => !have.has(s.id)).map(L.tradeCost));
   const slot = s => have.has(s.id)
     ? `<button class="pslot got ${s.format} ${neu.has(s.id) ? 'is-new' : ''}" data-act="sticker" data-id="${s.id}" aria-label="${esc(s.titel)}">${cardHTML(s.id)}${neu.has(s.id) ? '<em>Neu</em>' : ''}${S.dup[s.id] ? `<b class="pdup">×${S.dup[s.id] + 1}</b>` : ''}</button>`
-    : `<div class="pslot empty ${s.format} ${s.art}"><span class="pnum">${NUM[s.id]}</span><span class="plabel" lang="fr">${esc(s.kurz)}</span>${s.rolle ? `<span class="prole" lang="fr">${esc(s.rolle)}</span>` : ''}${RAR_LABEL[s.art] ? `<span class="prar">${RAR_LABEL[s.art]}</span>` : ''}</div>`;
+    : `<div class="pslot empty ${s.format} ${s.art}"><span class="pnum">${NUM[s.id]}</span><span class="plabel" lang="${F.lang}">${esc(s.kurz)}</span>${s.rolle ? `<span class="prole" lang="${F.lang}">${esc(s.rolle)}</span>` : ''}${RAR_LABEL[s.art] ? `<span class="prar">${RAR_LABEL[s.art]}</span>` : ''}</div>`;
   const block = (title, sub, list, style, flag) => `<section class="pteam" style="${style}">
-    <header class="pband">${flag}<b lang="fr">${title}</b><span>${sub}</span><i>${list.filter(s => have.has(s.id)).length}/${list.length}</i></header>
+    <header class="pband">${flag}<b lang="${F.lang}">${title}</b><span>${sub}</span><i>${list.filter(s => have.has(s.id)).length}/${list.length}</i></header>
     <div class="pgrid">${list.map(slot).join('')}</div></section>`;
   const spezial = page.filter(s => !s.team);
   return `<section class="ptop">
-      <img class="ptop-leo" src="${img(got === page.length ? 'leo_jubel' : 'leo_fussball')}" alt="Léo">
-      <div class="ptop-t"><h2 lang="fr">La Coupe du monde des grenouilles</h2><p class="ptop-sub">Die Frosch-WM · ${UNIT[n].titel} · ${got} von ${page.length} Stickern</p>
+      <img class="ptop-leo" src="${img(got === page.length ? FP('jubel') : FP('fussball'))}" alt="Léo">
+      <div class="ptop-t"><h2 lang="${F.lang}">La Coupe du monde des grenouilles</h2><p class="ptop-sub">Die Frosch-WM · ${UNIT[n].titel} · ${got} von ${page.length} Stickern</p>
       <p class="album-intro">In ${UNIT[n].titel} gibt jede richtige Antwort einen Punkt – in allen Übungen –, und jeder Lernfortschritt auch. Alle ${L.PER_PACK} Punkte gibt es ein Päckchen mit ${L.PACK_SIZE} Stickern – manche sind selten! Doppelte kannst du bei Léo gegen fehlende tauschen. Sind alle Wörter sicher, ist die Seite voll.</p>
       ${nextStkHTML('static', n)}
       <div class="ptop-row"><button class="btn ${dups >= cheapest ? 'primary' : ''}" data-act="trade-open" data-unit="${n}" ${got === page.length && !dups ? 'disabled' : ''}>${ICON.swap}<span>Tauschen · ${dups} ${dups === 1 ? 'Doppelter' : 'Doppelte'}</span></button>
@@ -1240,16 +1317,199 @@ function stickerSheetHTML(id) {
   const s = STICKER[id];
   if (s.format) {
     const k = S.dup[id] || 0;
-    return `<div class="sheet-head"><h2 lang="fr">${esc(s.titel)}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
+    return `<div class="sheet-head"><h2 lang="${F.lang}">${esc(s.titel)}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
     <div class="sheet-body center stk-sheet">${cardHTML(id, 'big')}
       <button class="snd-btn" data-act="say-sticker" data-id="${id}" aria-label="Anhören">${ICON.speaker}</button>
       <p class="de">${esc(s.de)}</p><p class="set-note">Nr. ${NUM[id]}${s.art === 'gold' ? ' · ★★ Gold: super selten' : s.art === 'glitzer' ? ' · ★ Glitzer: selten' : ''}${k ? ` · ${k}× doppelt` : ''}</p></div>`;
   }
-  return `<div class="sheet-head"><h2 lang="fr">${esc(s.titel)}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
+  return `<div class="sheet-head"><h2 lang="${F.lang}">${esc(s.titel)}</h2><button class="icon-btn" data-act="close-sheet" aria-label="Schliessen">${ICON.close}</button></div>
   <div class="sheet-body center stk-sheet">${stickerImg(id, 'big')}
     <button class="snd-btn" data-act="say-sticker" data-id="${id}" aria-label="Anhören">${ICON.speaker}</button>
     <p class="de">${esc(s.de)}</p>${s.art === 'glitzer' ? `<p class="set-note">Glitzer-Sticker: ${esc(bedingungText(s.bedingung))}</p>` : ''}</div>`;
 }
+
+/* ------------------------------------------------------- Panini-Heft (Englisch, seit 2026-11-07)
+   Wunsch des Benutzers: «wie ein echtes Panini-Heft». Umschlag, Seiten zum Umblättern (breiter Bildschirm quer: Doppelseite,
+   sonst eine Seite), vorne Turnier und Stadien, dann je Mannschaft eine Doppelseite in ihren Farben, hinten eine Liste zum
+   Abhaken. Leere Plätze zeigen Nummer, Name und Position. Sticker aus den Päckchen liegen zuerst im Stapel und werden selbst
+   eingeklebt: Sticker antippen → das Heft blättert zu seiner Seite, der Platz leuchtet → Platz antippen. S.klebt = eingeklebt.
+   Päckchen, Seltenheit und Tauschen wie beim Französisch-Teil; nichts füllt das Heft von selbst. */
+const HF = { i: 0, sel: null, busy: false, swipe: null };   // i = aufgeschlagene Seite (Doppelseite: die linke), sel = gewählter Sticker
+const stapel = () => S.stickers.filter(id => STICKER[id] && !S.klebt.includes(id)).reverse();       // der neuste zuerst
+const heftDoppel = () => window.innerWidth >= 900 && window.innerWidth > window.innerHeight * 1.1;
+const HEFT_SPEZIAL = { wc_trophy: 1, wc_ball: 1, wc_mascot: 1, wc_golden_boot: 1, wc_opening: 2, wc_final: 2 };
+/* Die Seiten des Hefts: 0 = Umschlag, dann Turnier, grosse Spiele, 2 × Stadien, je Mannschaft 2 Seiten, 2 × Checkliste */
+function heftSeiten() {
+  const n = paniniUnit(), alle = unitStickers(n).map(s => s.id), P = [{ art: 'deckel' }];
+  const deko = (html, span = 4, cls = '') => ({ deko: html, span, cls });
+  P.push({ art: 'karten', cls: 'turnier', titel: 'The tournament', sub: 'Das Turnier', t: ['#D52B1E', '#FFFFFF'],
+    items: alle.filter(id => HEFT_SPEZIAL[id] === 1).concat([deko(`<p lang="en"><b>Welcome to the Frog World Cup!</b> ${D.teams.length} teams play in Switzerland. Who will win the golden trophy?</p><p class="hd-de">Willkommen an der Frosch-WM! ${D.teams.length} Mannschaften spielen in der Schweiz.</p>`)]) });
+  P.push({ art: 'karten', cls: 'spiele', titel: 'The big games', sub: 'Die grossen Spiele', t: ['#1F3A93', '#D52B1E'],
+    items: alle.filter(id => HEFT_SPEZIAL[id] === 2) });
+  const stadien = alle.filter(id => STICKER[id].rolle === 'Stadium');
+  [stadien.slice(0, 4), stadien.slice(4)].forEach((ids, k) => P.push({ art: 'karten', cls: 'stadien', titel: 'The stadiums', sub: `Die Stadien ${k + 1}/2`,
+    t: ['#2E8B57', '#FFFFFF'], items: k ? ids : [deko(`<p lang="en"><b>${stadien.length} stadiums</b> in ${stadien.length} Swiss cities.</p>`, 6, 'schmal')].concat(ids) }));
+  D.teams.forEach(t => {
+    const ids = alle.filter(id => STICKER[id].team === t.id), by = r => ids.filter(id => STICKER[id].rolle === r);
+    const kopf = ids.filter(id => !STICKER[id].rolle || ['Coach'].includes(STICKER[id].rolle));        // Wappen, Team, Trainer, Maskottchen
+    const spieler = by('Goalkeeper').concat(by('Defender'), by('Midfielder'), by('Captain'), by('Forward'));
+    const coach = by('Coach')[0], capt = by('Captain')[0];
+    P.push({ art: 'karten', cls: 'team', team: t, titel: t.land.replace(/^the /, ''), sub: t.de, t: t.farben, items: kopf.concat(spieler.slice(0, 4)) });
+    P.push({ art: 'karten', cls: 'team', team: t, titel: t.land.replace(/^the /, ''), sub: t.de, t: t.farben,
+      items: spieler.slice(4).concat([deko(`${flagHTML(t.id)}<p lang="en"><b>${esc(t.land.replace(/^the /, ''))}</b>${coach ? `<br>Coach: ${esc(STICKER[coach].titel.split(',')[0])}` : ''}${capt ? `<br>Captain: ${esc(STICKER[capt].titel.split(',')[0])}` : ''}</p>`)]) });
+  });
+  const h = Math.ceil(alle.length / 2);
+  P.push({ art: 'liste', titel: 'Checklist', sub: 'Liste zum Abhaken', ids: alle.slice(0, h) }, { art: 'liste', titel: 'Checklist', sub: 'Liste zum Abhaken', ids: alle.slice(h) });
+  return P;
+}
+const seiteVon = (P, id) => Math.max(0, P.findIndex(p => p.items && p.items.includes(id)));
+/* Welche Seiten sind zu sehen? Doppelseite: [links, rechts], sonst [i]; der Umschlag steht immer allein (geschlossenes Heft) */
+function heftSicht(i = HF.i, P = heftSeiten()) {
+  if (!heftDoppel() || i === 0) return [i];
+  return [i, i + 1 < P.length ? i + 1 : null];
+}
+const heftStart = (p, P) => (!heftDoppel() || p === 0 ? p : p % 2 ? p : p - 1);        // linke Seite der Doppelseite mit p
+function heftSlotHTML(x) {
+  if (x.deko != null) return `<div class="hs-deko ${x.cls || ''}" style="grid-column:span ${x.span}">${x.deko}</div>`;
+  const s = STICKER[x];
+  if (S.klebt.includes(x)) return `<button class="hslot drin ${s.format} ${s.art}" data-act="heft-karte" data-id="${x}" aria-label="${esc(s.titel)}">${cardHTML(x)}</button>`;
+  const da = S.stickers.includes(x);
+  return `<button class="hslot leer ${s.format} ${s.art} ${HF.sel === x ? 'ziel' : ''} ${da ? 'da' : ''}" data-act="heft-platz" data-id="${x}" aria-label="Platz ${NUM[x]}: ${esc(s.titel)}">
+    <span class="hn">${NUM[x]}</span><span class="hname" lang="en">${esc(s.kurz)}</span>${s.rolle && s.rolle !== 'Stadium' ? `<span class="hrolle" lang="en">${esc(s.rolle)}</span>` : ''}${RAR_LABEL[s.art] ? `<span class="hrar">${RAR_LABEL[s.art]}</span>` : ''}</button>`;
+}
+function heftSeiteHTML(p, nr) {
+  if (!p) return '<div class="hs leer-seite"></div>';
+  if (p.art === 'deckel') {
+    return `<div class="hs deckel"><img src="${img('wc_cover')}" alt="">
+      <div class="hd-titel"><span class="hd-klein" lang="en">Official sticker album</span><b lang="en">Frog World Cup</b><span class="hd-land">${flagHTML('SUI')}<span lang="en">Switzerland</span></span></div>
+      <span class="hd-ecke" lang="en">${D.stickers.length} stickers</span><span class="hd-name">Wörtli-Frosch · Englisch mit ${F.name}</span></div>`;
+  }
+  const band = `<header class="hs-band">${p.team ? flagHTML(p.team.id) : '<b class="pc-wm">★</b>'}<b lang="en">${esc(p.titel)}</b><span>${esc(p.sub)}</span></header>`;
+  if (p.art === 'liste') {
+    return `<div class="hs liste" style="--t1:#1F2A44;--t2:#FFC83A">${band}
+      <div class="hl-grid">${p.ids.map(id => { const drin = S.klebt.includes(id), k = S.dup[id] || 0, da = !drin && S.stickers.includes(id);
+        return `<button class="hl ${drin ? 'drin' : da ? 'da' : ''} ${STICKER[id].art}" data-act="heft-zu" data-id="${id}" aria-label="Nummer ${NUM[id]}${drin ? ', eingeklebt' : ''}"><b>${NUM[id]}</b>${drin ? '<i>✓</i>' : da ? '<i>●</i>' : ''}${k ? `<u>×${k}</u>` : ''}</button>`; }).join('')}</div>
+      <p class="hl-legende"><span><i>✓</i> eingeklebt</span><span><i class="da">●</i> im Stapel</span><span><u>×2</u> Doppelte</span></p><span class="hs-nr">${nr}</span></div>`;
+  }
+  return `<div class="hs karten ${p.cls}" style="--t1:${p.t[0]};--t2:${p.t[1] || p.t[0]}">${band}
+    <div class="hs-grid">${p.items.map(heftSlotHTML).join('')}</div><span class="hs-nr">${nr}</span></div>`;
+}
+function heftStapelHTML() {
+  const ids = stapel(), n = paniniUnit(), offen = packsPending(n);
+  return `<div class="hst-kopf">${ids.length ? `<b>${ids.length} Sticker zum Einkleben</b><span>${HF.sel ? `Tippe auf den leuchtenden Platz Nr. ${NUM[HF.sel]}.` : 'Tippe einen Sticker an – das Heft zeigt dir seinen Platz.'}</span>`
+      : `<b>Alles eingeklebt</b><span>${offen ? 'Öffne deine Päckchen!' : `Übe mit ${F.name} – dann gibt es neue Päckchen.`}</span>`}</div>
+    ${ids.length ? `<div class="hst-reihe">${ids.map(id => `<button class="hst ${STICKER[id].format} ${HF.sel === id ? 'sel' : ''}" data-act="heft-stapel" data-id="${id}" aria-label="${esc(STICKER[id].titel)}">${cardHTML(id, 'mini')}<b>${NUM[id]}</b></button>`).join('')}</div>` : ''}
+    <div class="hst-knoepfe">${offen ? `<button class="btn primary" data-act="open-pack" data-unit="${n}">${ICON.pack}<span>Päckchen öffnen (${offen})</span></button>` : ''}
+      ${ids.length > 1 ? '<button class="btn" data-act="heft-alle">Alle einkleben</button>' : ''}
+      <button class="btn" data-act="trade-open" data-unit="${n}">${ICON.swap}<span>Tauschen · ${pageDups(n)} Doppelte</span></button></div>
+    ${offen ? '' : nextStkHTML('static wide', n)}`;
+}
+function heftHTML() {
+  const P = heftSeiten(), n = paniniUnit(), drin = unitStickers(n).filter(s => S.klebt.includes(s.id)).length;
+  const marken = [[0, '<span class="hm-e">📖</span>', 'Umschlag'], [1, '<span class="hm-e">🏆</span>', 'Turnier'], [3, '<span class="hm-e">🏟️</span>', 'Stadien']]
+    .concat(D.teams.map(t => [P.findIndex(p => p.team === t), flagHTML(t.id), t.de]), [[P.length - 2, '<span class="hm-e">✅</span>', 'Checkliste']]);
+  return `<div class="screen heft">
+    <header class="bar"><button class="icon-btn" data-act="home" aria-label="Zurück">${ICON.back}</button><h1 class="bar-title">Panini-Heft</h1>
+      <span class="count">${drin}/${unitStickers(n).length}</span></header>
+    <nav class="heft-marken" aria-label="Inhalt">${marken.map(([p, ic, t]) => `<button class="hm" data-act="heft-gehe" data-p="${p}" aria-label="${esc(t)}">${ic}</button>`).join('')}</nav>
+    <div class="heft-haupt">
+      <div class="heft-buch-rahmen"><div class="heft-buch" id="heft"><div class="heft-seiten" id="heft-seiten"></div></div>
+        <div class="heft-pfeile"><button class="icon-btn" data-act="heft-blatt" data-d="-1" aria-label="Zurückblättern">${ICON.prev}</button>
+          <span class="heft-wo" id="heft-wo"></span>
+          <button class="icon-btn" data-act="heft-blatt" data-d="1" aria-label="Weiterblättern">${ICON.next}</button></div></div>
+      <section class="heft-stapel" id="heft-stapel"></section>
+    </div>
+  </div>`;
+}
+/* Aufgeschlagene Seiten, Stapel und Pfeile zeichnen (nach jedem Einkleben, Blättern, Drehen des Geräts) */
+function heftZeigen() {
+  const P = heftSeiten(), box = document.getElementById('heft-seiten');
+  if (!box) return;
+  HF.i = Math.min(heftStart(HF.i, P), P.length - 1);
+  const sicht = heftSicht(HF.i, P), doppel = sicht.length === 2;
+  document.getElementById('heft').classList.toggle('doppel', doppel);
+  box.innerHTML = sicht.map(k => `<div class="hs-platz">${heftSeiteHTML(k == null ? null : P[k], k)}</div>`).join('');
+  document.getElementById('heft-stapel').innerHTML = heftStapelHTML();
+  const zahl = document.querySelector('.heft .count'), n = paniniUnit();
+  if (zahl) zahl.textContent = `${unitStickers(n).filter(s => S.klebt.includes(s.id)).length}/${unitStickers(n).length}`;
+  const wo = document.getElementById('heft-wo');
+  if (wo) wo.textContent = HF.i === 0 ? 'Umschlag' : `Seite ${sicht.filter(k => k != null).join('–')} von ${P.length - 1}`;
+  document.querySelectorAll('[data-act="heft-blatt"]').forEach(b => { b.disabled = +b.dataset.d < 0 ? HF.i === 0 : sicht[sicht.length - 1] == null || sicht[sicht.length - 1] >= P.length - 1; });
+  document.querySelectorAll('.heft-marken .hm').forEach(b => { const p = +b.dataset.p; b.classList.toggle('on', sicht.includes(p)); });
+}
+/* Blättern: d = ±1 (eine Doppelseite bzw. Seite) oder ziel = Seite. Wie beim Sammelbuch in zwei Hälften: die alte Seite dreht
+   sich bis senkrecht zum Rücken hoch, dann legt sich die neue von dort auf die andere Seite (kein backface-visibility nötig –
+   das kennt WebKit unter Windows nicht). Eine Seite (Handy, iPad hoch): die alte klappt weg bzw. die neue herein. */
+function heftBlaettern(d, ziel) {
+  if (HF.busy) return;
+  const P = heftSeiten(), doppel = heftDoppel(), von = heftStart(HF.i, P);
+  let nach = ziel != null ? heftStart(ziel, P) : doppel ? (von === 0 ? (d > 0 ? 1 : 0) : von + 2 * d) : von + d;
+  nach = Math.max(0, Math.min(nach, doppel ? heftStart(P.length - 1, P) : P.length - 1));
+  if (nach === von) return;
+  const vor = nach > von, box = document.getElementById('heft-seiten');
+  const alt = heftSicht(von, P), neu = heftSicht(nach, P);
+  HF.i = nach;
+  if (!box || reduced() || (doppel && (von === 0 || nach === 0))) {    // Heft auf- oder zuklappen: kurz einblenden statt blättern
+    heftZeigen();
+    if (box && !reduced()) { Sound.fx('blaettern'); box.classList.remove('auf'); void box.offsetWidth; box.classList.add('auf'); }
+    return;
+  }
+  HF.busy = true;
+  Sound.fx('blaettern');
+  const platz = k => `<div class="hs-platz">${heftSeiteHTML(k == null ? null : P[k], k)}</div>`;
+  const teil = (k, cls) => `<div class="hblatt ${cls}">${heftSeiteHTML(k == null ? null : P[k], k)}</div>`;
+  let unten, blatt;
+  if (doppel) {
+    unten = vor ? [alt[0], neu[1]] : [neu[0], alt[1]];
+    blatt = vor ? teil(alt[1], 'r hoch-vor') + teil(neu[0], 'l runter-vor') : teil(alt[0], 'l hoch-zurueck') + teil(neu[1], 'r runter-zurueck');
+  } else {
+    unten = vor ? [neu[0]] : [alt[0]];
+    blatt = teil(vor ? alt[0] : neu[0], vor ? 'ganz weg' : 'ganz her');
+  }
+  box.innerHTML = unten.map(platz).join('') + blatt;
+  const fertig = () => { if (!HF.busy) return; HF.busy = false; heftZeigen(); };
+  const letzte = [...box.querySelectorAll('.hblatt')].pop();
+  letzte.addEventListener('animationend', e => { if (e.target === letzte) fertig(); });
+  setTimeout(fertig, 900);
+}
+function heftWaehle(id) {
+  HF.sel = HF.sel === id ? null : id;
+  const P = heftSeiten(), p = seiteVon(P, id);
+  if (HF.sel && !heftSicht(HF.i, P).includes(p)) heftBlaettern(0, p); else heftZeigen();
+  const heft = document.getElementById('heft');                 // Handy: der Stapel liegt unter dem Heft – das Heft wieder ins Bild
+  if (HF.sel && heft) heft.scrollIntoView({ block: 'nearest', behavior: reduced() ? 'auto' : 'smooth' });
+  if (HF.sel) { Sound.say(id); setTimeout(() => { const z = document.querySelector('.hslot.ziel'); if (z && z.scrollIntoView) z.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }, 700); }
+}
+function heftEinkleben(id, leise) {
+  if (S.klebt.includes(id) || !S.stickers.includes(id)) return;
+  S.klebt.push(id);
+  S.neu = S.neu.filter(x => x !== id);
+  if (HF.sel === id) HF.sel = null;
+  save();
+  if (leise) return;
+  heftZeigen();
+  const el = document.querySelector(`.hslot.drin[data-id="${CSS.escape(id)}"]`);
+  if (el && !reduced()) { el.classList.add('frisch'); burst(el, 12); }
+  Sound.fx('kleben');
+  if (voiceOn()) Sound.say([{ pause: 250 }, id]);
+  checkComplete(paniniUnit());
+}
+function heftPlatz(id, btn) {
+  if (S.stickers.includes(id)) return heftEinkleben(id);           // man hat ihn: gleich einkleben
+  nope(btn);
+  const kopf = document.querySelector('.hst-kopf span');
+  if (kopf) kopf.textContent = HF.sel ? `Das ist Platz ${NUM[id]} – dein Sticker gehört auf Platz ${NUM[HF.sel]}.` : `Nr. ${NUM[id]} hast du noch nicht. Öffne Päckchen oder tausche Doppelte!`;
+  Sound.say(id);
+}
+/* Wischen auf dem Heft = blättern */
+app.addEventListener('pointerdown', e => { if (view.name === 'album' && F.code === 'en' && e.target.closest('#heft')) HF.swipe = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+window.addEventListener('pointerup', e => {
+  const s = HF.swipe; HF.swipe = null;
+  if (!s || view.name !== 'album') return;
+  const dx = e.clientX - s.x, dy = e.clientY - s.y;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy) && performance.now() - s.t < 800) heftBlaettern(dx < 0 ? 1 : -1);
+});
+window.addEventListener('resize', () => { if (view.name === 'album' && F.code === 'en' && !HF.busy) heftZeigen(); });
 
 /* ----------------------------------------------------------- Sammelbuch
    Wie beim Rechentiger und Wörtli-Panda (2026-10-26): ein Buch zum freien Einkleben der Léo-Sticker (ohne Panini-Karten) – aus dem Stapel unten auf eine Seite
@@ -1303,10 +1563,10 @@ function buchHTML() {
 }
 function oeffneBuch() {
   BK.from = view.name === 'album' ? 'album' : 'home';
-  Sound.preload(['blaettern', 'kleben', 'abloesen', 'leo_buch_start', 'leo_buch_klebt', 'leo_buch_leer']);
+  Sound.preload(['blaettern', 'kleben', 'abloesen', FP('buch_start'), FP('buch_klebt'), FP('buch_leer')]);
   nav('buch');
-  if (!S.buch.seen) { S.buch.seen = true; save(); leo('leo_buch_start'); }        // die Erklärung nur beim ersten Mal
-  else if (buchAlle().length && !freieSticker().length) leo('leo_buch_leer');
+  if (!S.buch.seen) { S.buch.seen = true; save(); leo(FP('buch_start')); }        // die Erklärung nur beim ersten Mal
+  else if (buchAlle().length && !freieSticker().length) leo(FP('buch_leer'));
 }
 function buchZeigen() { zeichneStapel(); zeichneBuch(); }          // zuerst der Stapel: seine Höhe bestimmt die Buchgrösse
 function buchAufraeumen() {
@@ -1361,16 +1621,16 @@ function seiteHTML(p, seite) {
   if (a.art === 'umschlag') {
     return `<div class="page ${seite} umschlag" data-act="buch-auf" style="background-image:url(${img('buch_umschlag')})">
       <span class="u-titel"><small>Mein</small><b>Frosch-Sammelbuch</b></span>
-      <span class="u-bild"><img src="${img('leo_hallo')}" alt=""></span>
+      <span class="u-bild"><img src="${img(FP('hallo'))}" alt=""></span>
       <span class="u-name">${esc(name())}</span>
     </div>`;
   }
   let inhalt = '', stil = '', cls = a.art;
   if (a.art === 'exlibris') {
-    inhalt = `<div class="exlibris-rahmen"><img src="${img('leo_hallo')}" alt=""><span class="ex-klein">Dieses Buch gehört</span>
+    inhalt = `<div class="exlibris-rahmen"><img src="${img(FP('hallo'))}" alt=""><span class="ex-klein">Dieses Buch gehört</span>
       <span class="ex-name">${esc(name()) || '…………'}</span><span class="ex-deko">${ICON.star}${ICON.star}${ICON.star}</span></div>`;
   } else if (a.art === 'titel') {
-    inhalt = `<div class="titel-inhalt"><span class="t-klein">Mein</span><span class="t-gross">Frosch-Sammelbuch</span><img src="${img('leo_jubel')}" alt="">
+    inhalt = `<div class="titel-inhalt"><span class="t-klein">Mein</span><span class="t-gross">Frosch-Sammelbuch</span><img src="${img(FP('jubel'))}" alt="">
       <span class="t-text">Zieh deine Sticker von unten auf eine Seite und kleb sie ein, wo du willst. Tippst du einen an, kannst du ihn drehen oder ablösen.</span></div>`;
   } else {
     stil = ` style="background-image:url(${img('seite_' + SZENEN[a.szene][0])})"`;
@@ -1502,7 +1762,7 @@ function einkleben(s, p, x, y, r, bild) {
   if (neu) stapelWeg(s);
   if (!reduced()) { void e.offsetWidth; e.classList.add('klebt'); }
   buchLeiste();
-  if (neu && eingeklebt().length === 1) leo('leo_buch_klebt');        // beim allerersten Sticker
+  if (neu && eingeklebt().length === 1) leo(FP('buch_klebt'));        // beim allerersten Sticker
 }
 /* Antippen im Stapel: auf die sichtbare Seite mit weniger Stickern, ungefähr in die Mitte */
 function antippenEinkleben(s) {
@@ -1729,16 +1989,16 @@ function settingsHTML() {
   <div class="sheet-body">
     <section class="set-group"><h3>Name</h3>
       <input class="name-in" id="name-in" type="text" maxlength="20" autocomplete="off" placeholder="Wie heisst du?" value="${esc(S.settings.name)}">
-      <p class="set-note">Léo schreibt deinen Namen auf die Startseite. Er bleibt nur auf diesem Gerät.</p></section>
+      <p class="set-note">${F.name} schreibt deinen Namen auf die Startseite. Er bleibt nur auf diesem Gerät.</p></section>
     <section class="set-group"><h3>Üben</h3>
-      <div class="set-row col"><div class="set-label">Aufgaben pro Runde mit Léo</div>${seg('length', [[10, '10'], [15, '15'], [20, '20']])}</div>
+      <div class="set-row col"><div class="set-label">Aufgaben pro Runde mit ${F.name}</div>${seg('length', [[10, '10'], [15, '15'], [20, '20']])}</div>
       <div class="set-row col"><div class="set-label">Schreiben</div>${seg('hilfe', [['auto', 'Automatisch'], ['puzzle', 'Immer Puzzle'], ['tastatur', 'Immer Tastatur']])}
         <div class="set-sub">Automatisch: zuerst mit Puzzle, wenn das Wort sitzt mit der Tastatur.</div></div>
       <div class="set-row col"><div class="set-label">Wörtlitest</div>${seg('testLength', [[10, '10 Wörter'], [20, '20 Wörter'], [0, 'Alle Wörter']])}</div>
     </section>
     <section class="set-group"><h3>Ton</h3>
       ${sw('autoplay', 'Wörter automatisch vorlesen')}
-      ${sw('voice', 'Léo spricht', 'Lob und Hilfe auf Französisch')}
+      ${sw('voice', `${F.name} spricht`, `Lob und Hilfe auf ${F.sprache}`)}
       ${sw('sounds', 'Klänge')}
       <button class="btn" data-act="test-sound">${ICON.speaker}<span>Ton testen</span></button>
     </section>
@@ -1793,10 +2053,12 @@ function onClick(e) {
       break;
     }
     case 'start-leo': sfx.tap(); startLeo(); break;
+    case 'sprachen': sfx.tap(); Sound.stop(); nav('start'); break;
+    case 'sprache': sfx.tap(); spracheWaehlen(b.dataset.v); break;
     case 'mode': {
       sfx.tap();
       const m = b.dataset.mode;
-      if (m === 'karten') { karteI = 0; nav('karten'); if (voiceOn() && S.settings.autoplay) Sound.say(['leo_modus_karten', { pause: 200 }, words()[0].id]); }
+      if (m === 'karten') { karteI = 0; nav('karten'); if (voiceOn() && S.settings.autoplay) Sound.say([FP('modus_karten'), { pause: 200 }, words()[0].id]); }
       else if (m === 'memory') startMemory();
       else if (m === 'test') startTest();
       else startDrill(m);
@@ -1806,8 +2068,8 @@ function onClick(e) {
     case 'teil': S.teil = b.dataset.v; save(); sfx.tap(); render(); break;
     case 'album':
       sfx.tap(); albumN = b.dataset.unit ? +b.dataset.unit : S.unit; nav('album');
-      if (!S.albumSeen) { S.albumSeen = true; save(); leo('leo_album'); }
-      else if (S.stickers.length === D.stickers.length) leo('leo_album_voll');
+      if (!S.albumSeen) { S.albumSeen = true; save(); leo(FP('album')); }
+      else if (S.stickers.length === D.stickers.length) leo(FP('album_voll'));
       break;
     case 'album-page': sfx.tap(); albumN = +b.dataset.v; render(); window.scrollTo(0, 0); break;
     case 'open-pack': openPack(+b.dataset.unit || paniniUnit()); break;
@@ -1816,7 +2078,7 @@ function onClick(e) {
     case 'pack-all': flipAll(); break;
     case 'pack-close': closePack(); break;
     case 'pack-album': closePack('album'); break;
-    case 'trade-open': sfx.tap(); openSheet('tausch', tradeHTML(+b.dataset.unit || albumPage())); leo('leo_echange'); break;
+    case 'trade-open': sfx.tap(); openSheet('tausch', tradeHTML(+b.dataset.unit || albumPage())); leo(FP('echange')); break;
     case 'trade': doTrade(b.dataset.id, b); break;
     case 'sticker': sfx.sparkle(); openSheet('sticker', stickerSheetHTML(b.dataset.id)); Sound.say(b.dataset.id); break;
     case 'say-sticker': Sound.say(b.dataset.id); break;
@@ -1861,11 +2123,18 @@ function onClick(e) {
       b.parentElement.querySelectorAll('button').forEach(x => x.setAttribute('aria-checked', String(x === b)));
       break;
     }
-    case 'test-sound': sfx.right(3); setTimeout(() => Sound.say(['leo_hallo_02', { pause: 200 }, D.woerter[0].id]), 350); break;
-    case 'reset': openSheet('reset', confirmHTML('Alles zurücksetzen?', 'Alle Lernstände, alle Sticker und das Sammelbuch werden gelöscht. Das lässt sich nicht rückgängig machen.', 'Zurücksetzen', 'reset-yes')); break;
-    case 'reset-yes': S.w = {}; S.round = 0; S.tests = []; S.stickers = []; S.neu = []; S.dup = {}; S.pk = {}; S.buch = buchLaden(null); S.albumSeen = false; save(); closeSheet(true); nav('home', {}, false); break;
+    case 'test-sound': sfx.right(3); setTimeout(() => Sound.say([FP('hallo_02'), { pause: 200 }, D.woerter[0].id]), 350); break;
+    case 'reset': openSheet('reset', confirmHTML('Alles zurücksetzen?', `Alle Lernstände und alle Sticker ${F.code === 'fr' ? 'und das Sammelbuch ' : ''}im ${F.sprache}-Teil werden gelöscht. Das lässt sich nicht rückgängig machen.`, 'Zurücksetzen', 'reset-yes')); break;
+    case 'reset-yes': S.w = {}; S.round = 0; S.tests = []; S.stickers = []; S.neu = []; S.klebt = []; S.dup = {}; S.pk = {}; S.buch = buchLaden(null); S.albumSeen = false; save(); closeSheet(true); nav('home', {}, false); break;
     case 'hint-close': S.hintClosed = true; save(); refreshInstall(); break;
     case 'buch': sfx.tap(); oeffneBuch(); break;
+    case 'heft-blatt': heftBlaettern(+b.dataset.d); break;
+    case 'heft-gehe': sfx.tap(); heftBlaettern(0, +b.dataset.p); break;
+    case 'heft-stapel': sfx.tap(); heftWaehle(b.dataset.id); break;
+    case 'heft-platz': heftPlatz(b.dataset.id, b); break;
+    case 'heft-karte': sfx.sparkle(); openSheet('sticker', stickerSheetHTML(b.dataset.id)); Sound.say(b.dataset.id); break;
+    case 'heft-zu': sfx.tap(); heftBlaettern(0, seiteVon(heftSeiten(), b.dataset.id)); break;
+    case 'heft-alle': stapel().forEach(id => heftEinkleben(id, true)); HF.sel = null; heftZeigen(); Sound.fx('kleben'); sfx.sticker(); checkComplete(paniniUnit()); break;
     case 'buch-zu': sfx.tap(); nav(BK.from); break;
     case 'blatt': blaettern(+b.dataset.d); break;
     case 'buch-auf': blaettern(1); break;
@@ -1900,6 +2169,11 @@ document.addEventListener('keydown', e => {
     else if ((e.key === 'Delete' || e.key === 'Backspace') && BK.sel != null) { abloesen(BK.sel); e.preventDefault(); }
     return;
   }
+  if (view.name === 'album' && F.code === 'en') {
+    if (e.key === 'ArrowRight') { heftBlaettern(1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft') { heftBlaettern(-1); e.preventDefault(); }
+    return;
+  }
   if (view.name === 'karten') {
     if (e.key === 'ArrowRight') onClick({ target: document.querySelector('[data-act="karte-next"]') });
     if (e.key === 'ArrowLeft') onClick({ target: document.querySelector('[data-act="karte-prev"]') });
@@ -1929,9 +2203,12 @@ document.addEventListener('keydown', e => {
 ['gesturestart', 'gesturechange'].forEach(ev => document.addEventListener(ev, e => e.preventDefault(), { passive: false }));
 
 /* ================================================================== Start */
-try { history.replaceState({ name: 'home' }, ''); } catch (e) { /* file:// */ }
+let gewaehlt = null;
+try { gewaehlt = sessionStorage.getItem(SPRACH_KEY); } catch (e) { /* privates Fenster o. Ä. */ }
+setSprache(SPRACHEN[gewaehlt] ? gewaehlt : 'fr');
+view = { name: SPRACHEN[gewaehlt] ? 'home' : 'start' };
+try { history.replaceState({ name: view.name }, ''); } catch (e) { /* file:// */ }
 render();
-['leo_denkt', 'leo_jubel', 'leo_mut'].forEach(n => { new Image().src = img(n); });
 
 if ('serviceWorker' in navigator && window.BUILD !== 'dev' && (location.protocol === 'https:' || ['localhost', '127.0.0.1'].includes(location.hostname))) {
   const hadController = !!navigator.serviceWorker.controller;
