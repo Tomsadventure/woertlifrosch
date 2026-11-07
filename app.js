@@ -1358,8 +1358,8 @@ function heftSeiten() {
     P.push({ art: 'karten', cls: 'team', team: t, titel: t.land.replace(/^the /, ''), sub: t.de, t: t.farben,
       items: spieler.slice(4).concat([deko(`${flagHTML(t.id)}<p lang="en"><b>${esc(t.land.replace(/^the /, ''))}</b>${coach ? `<br>Coach: ${esc(STICKER[coach].titel.split(',')[0])}` : ''}${capt ? `<br>Captain: ${esc(STICKER[capt].titel.split(',')[0])}` : ''}</p>`)]) });
   });
-  const h = Math.ceil(alle.length / 2);
-  P.push({ art: 'liste', titel: 'Checklist', sub: 'Liste zum Abhaken', ids: alle.slice(0, h) }, { art: 'liste', titel: 'Checklist', sub: 'Liste zum Abhaken', ids: alle.slice(h) });
+  const nl = Math.ceil(alle.length / 70), h = Math.ceil(alle.length / nl);             // Checkliste: höchstens 70 Nummern je Seite (179 Karten = 3 Seiten)
+  for (let k = 0; k < nl; k++) P.push({ art: 'liste', titel: 'Checklist', sub: nl > 1 ? `Liste zum Abhaken ${k + 1}/${nl}` : 'Liste zum Abhaken', ids: alle.slice(k * h, (k + 1) * h) });
   return P;
 }
 const seiteVon = (P, id) => Math.max(0, P.findIndex(p => p.items && p.items.includes(id)));
@@ -1407,7 +1407,7 @@ function heftStapelHTML() {
 function heftHTML() {
   const P = heftSeiten(), n = paniniUnit(), drin = unitStickers(n).filter(s => S.klebt.includes(s.id)).length;
   const marken = [[0, '<span class="hm-e">📖</span>', 'Umschlag'], [1, '<span class="hm-e">🏆</span>', 'Turnier'], [3, '<span class="hm-e">🏟️</span>', 'Stadien']]
-    .concat(D.teams.map(t => [P.findIndex(p => p.team === t), flagHTML(t.id), t.de]), [[P.length - 2, '<span class="hm-e">✅</span>', 'Checkliste']]);
+    .concat(D.teams.map(t => [P.findIndex(p => p.team === t), flagHTML(t.id), t.de]), [[P.findIndex(p => p.art === 'liste'), '<span class="hm-e">✅</span>', 'Checkliste']]);
   return `<div class="screen heft">
     <header class="bar"><button class="icon-btn" data-act="home" aria-label="Zurück">${ICON.back}</button><h1 class="bar-title">Panini-Heft</h1>
       <span class="count">${drin}/${unitStickers(n).length}</span></header>
